@@ -186,6 +186,14 @@ func (t *Strategy) Watch(ctx context.Context, namespace string, opts storage.Lis
 
 		for event := range w {
 			switch event.Type {
+			case watch.Bookmark:
+				newObj := t.translator.NewPublic()
+				m, err := meta.Accessor(event.Object)
+				if err == nil {
+					newObj.SetResourceVersion(m.GetResourceVersion())
+					event.Object = newObj
+					result <- event
+				}
 			case watch.Added:
 				fallthrough
 			case watch.Deleted:
