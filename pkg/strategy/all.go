@@ -11,5 +11,3 @@ type CompleteStrategy interface {
 
 	Destroy()
 }
-
-type AugmentComplete func(s CompleteStrategy) (CompleteStrategy, error)

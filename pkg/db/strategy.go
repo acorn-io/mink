@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
-type Store struct {
+type Strategy struct {
 	scheme  *runtime.Scheme
 	db      DB
 	obj     runtime.Object
@@ -38,7 +38,7 @@ type cont struct {
 	Labels string
 }
 
-func NewStore(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB) (*Store, error) {
+func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB) (*Strategy, error) {
 	gvk, err := apiutil.GVKForObject(obj, scheme)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func NewStore(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *
 		Version: gvk.Version,
 		Kind:    gvk.Kind + "List",
 	})
-	s := &Store{
+	s := &Strategy{
 		scheme:  scheme,
 		db:      NewDB(tableName, gvk, db),
 		gvk:     gvk,
@@ -67,15 +67,15 @@ func NewStore(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *
 	return s, nil
 }
 
-func (s *Store) Destroy() {
+func (s *Strategy) Destroy() {
 	s.dbCancel()
 }
 
-func (s *Store) Start(ctx context.Context) {
+func (s *Strategy) Start(ctx context.Context) {
 	s.db.Start(ctx)
 }
 
-func (s *Store) Get(ctx context.Context, namespace, name string) (types.Object, error) {
+func (s *Strategy) Get(ctx context.Context, namespace, name string) (types.Object, error) {
 	records, _, err := s.db.Get(ctx, Criteria{
 		Name:              name,
 		Namespace:         strptr(namespace),
@@ -92,7 +92,7 @@ func (s *Store) Get(ctx context.Context, namespace, name string) (types.Object, 
 	return obj.(types.Object), s.recordIntoObject(&records[0], obj)
 }
 
-func (s *Store) GetToList(ctx context.Context, namespace, name string) (types.ObjectList, error) {
+func (s *Strategy) GetToList(ctx context.Context, namespace, name string) (types.ObjectList, error) {
 	list := s.objList.DeepCopyObject().(types.ObjectList)
 	obj := s.obj.DeepCopyObject()
 	records, resourceVersionInt, err := s.db.Get(ctx, Criteria{
@@ -116,7 +116,7 @@ func (s *Store) GetToList(ctx context.Context, namespace, name string) (types.Ob
 	return list, meta.SetList(list, []runtime.Object{obj})
 }
 
-func (s *Store) Watch(ctx context.Context, namespace string, opts storage.ListOptions) (<-chan watch.Event, error) {
+func (s *Strategy) Watch(ctx context.Context, namespace string, opts storage.ListOptions) (<-chan watch.Event, error) {
 	criteria := WatchCriteria{
 		Namespace:     nilOnEmpty(namespace),
 		LabelSelector: opts.Predicate.Label,
@@ -185,15 +185,15 @@ func (s *Store) Watch(ctx context.Context, namespace string, opts storage.ListOp
 	return result, nil
 }
 
-func (s *Store) New() types.Object {
+func (s *Strategy) New() types.Object {
 	return s.obj.DeepCopyObject().(types.Object)
 }
 
-func (s *Store) NewList() types.ObjectList {
+func (s *Strategy) NewList() types.ObjectList {
 	return s.objList.DeepCopyObject().(types.ObjectList)
 }
 
-func (s *Store) newObj() types.Object {
+func (s *Strategy) newObj() types.Object {
 	obj, err := s.scheme.New(s.gvk)
 	if err != nil {
 		panic("failed to create object for watch: " + err.Error())
@@ -201,7 +201,7 @@ func (s *Store) newObj() types.Object {
 	return obj.(types.Object)
 }
 
-func (s *Store) List(ctx context.Context, namespace string, opts storage.ListOptions) (types.ObjectList, error) {
+func (s *Strategy) List(ctx context.Context, namespace string, opts storage.ListOptions) (types.ObjectList, error) {
 	list := s.objList.DeepCopyObject().(types.ObjectList)
 	result, err := s.list(ctx, nilOnEmpty(namespace), opts)
 	if err != nil {
@@ -219,7 +219,7 @@ type listResult struct {
 	ResourceVersion string
 }
 
-func (s *Store) list(ctx context.Context, namespace *string, opts storage.ListOptions) (*listResult, error) {
+func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.ListOptions) (*listResult, error) {
 	result := &listResult{}
 
 	criteria := Criteria{
@@ -284,7 +284,7 @@ func (s *Store) list(ctx context.Context, namespace *string, opts storage.ListOp
 	return result, nil
 }
 
-func (s *Store) getExisting(ctx context.Context, gvk schema.GroupVersionKind, namespace *string, name string) (*Record, error) {
+func (s *Strategy) getExisting(ctx context.Context, gvk schema.GroupVersionKind, namespace *string, name string) (*Record, error) {
 	existing, _, err := s.db.Get(ctx, Criteria{
 		Name:              name,
 		Namespace:         namespace,
@@ -302,15 +302,15 @@ func (s *Store) getExisting(ctx context.Context, gvk schema.GroupVersionKind, na
 	return &existing[0], nil
 }
 
-func (s *Store) Delete(ctx context.Context, obj types.Object) (types.Object, error) {
+func (s *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, error) {
 	return s.Update(ctx, obj)
 }
 
-func (s *Store) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
+func (s *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
 	return s.update(ctx, true, obj)
 }
 
-func (s *Store) Update(ctx context.Context, obj types.Object) (types.Object, error) {
+func (s *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, error) {
 	return s.update(ctx, false, obj)
 }
 
@@ -325,7 +325,7 @@ func nilOnEmpty(s string) *string {
 	return &s
 }
 
-func (s *Store) update(ctx context.Context, status bool, obj types.Object) (types.Object, error) {
+func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (types.Object, error) {
 	gvk, err := apiutil.GVKForObject(obj, s.scheme)
 	if err != nil {
 		return nil, err
@@ -382,7 +382,7 @@ func (s *Store) update(ctx context.Context, status bool, obj types.Object) (type
 	return obj, s.recordIntoObject(newRecord, obj)
 }
 
-func (s *Store) Create(ctx context.Context, obj types.Object) (types.Object, error) {
+func (s *Strategy) Create(ctx context.Context, obj types.Object) (types.Object, error) {
 	existing, _, err := s.db.Get(ctx, Criteria{
 		Name:              obj.GetName(),
 		Namespace:         strptr(obj.GetNamespace()),
@@ -417,7 +417,7 @@ func (s *Store) Create(ctx context.Context, obj types.Object) (types.Object, err
 	return obj, s.recordIntoObject(record, obj)
 }
 
-func (s *Store) recordToMap(rec *Record) (map[string]interface{}, error) {
+func (s *Strategy) recordToMap(rec *Record) (map[string]interface{}, error) {
 	metadata := map[string]interface{}{}
 	data := map[string]interface{}{}
 	err := json.Unmarshal(rec.Data, &data)
@@ -467,7 +467,7 @@ func (s *Store) recordToMap(rec *Record) (map[string]interface{}, error) {
 	return data, nil
 }
 
-func (s *Store) recordIntoObject(rec *Record, obj runtime.Object) error {
+func (s *Strategy) recordIntoObject(rec *Record, obj runtime.Object) error {
 	recordMap, err := s.recordToMap(rec)
 	if err != nil {
 		return err
@@ -479,7 +479,7 @@ func (s *Store) recordIntoObject(rec *Record, obj runtime.Object) error {
 	return json.Unmarshal(d, obj)
 }
 
-func (s *Store) objectToRecord(obj types.Object) (*Record, error) {
+func (s *Strategy) objectToRecord(obj types.Object) (*Record, error) {
 	gvk, err := apiutil.GVKForObject(obj, s.scheme)
 	if err != nil {
 		return nil, err

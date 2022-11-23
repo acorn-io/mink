@@ -9,6 +9,7 @@ import (
 
 	"github.com/acorn-io/mink/pkg/channel"
 	"github.com/acorn-io/mink/pkg/datatypes"
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
@@ -41,16 +42,13 @@ func (g *GormDB) triggerWatchLoop() {
 }
 
 func (g *GormDB) sendBookmark(ctx context.Context, lastID uint) {
-	if lastID == 0 {
-		return
-	}
 	g.broadcaster.C <- Record{
 		ID: lastID,
 	}
 }
 
-func (g *GormDB) readEvents(ctx context.Context, lastID uint) (uint, error) {
-	if lastID == 0 {
+func (g *GormDB) readEvents(ctx context.Context, init bool, lastID uint) (uint, error) {
+	if init {
 		id, err := g.getMaxID(ctx)
 		if err != nil {
 			return 0, err
@@ -86,7 +84,10 @@ func (g *GormDB) Start(ctx context.Context) {
 }
 
 func (g *GormDB) watchLoop(ctx context.Context) {
-	var lastID uint
+	var (
+		lastID uint
+		init   = true
+	)
 
 	for {
 		select {
@@ -98,11 +99,12 @@ func (g *GormDB) watchLoop(ctx context.Context) {
 			continue
 		case <-g.trigger:
 		}
-		id, err := g.readEvents(ctx, lastID)
+		id, err := g.readEvents(ctx, init, lastID)
 		if err != nil {
 			klog.Infof("failed to initialize watcher: %v", err)
 			continue
 		}
+		init = false
 		lastID = id
 	}
 }
@@ -126,10 +128,6 @@ func (g *GormDB) initializeWatch(ctx context.Context, criteria WatchCriteria, re
 		before = uint(0)
 		after  = criteria.After
 	)
-
-	if after == 0 {
-		return nil
-	}
 
 	for {
 		resp, newBefore, err := g.Get(ctx, Criteria{
@@ -189,12 +187,14 @@ func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record
 		}
 	}()
 
-	err := g.initializeWatch(ctx, criteria, initialize)
-	close(initialize)
-	if err != nil {
-		sub.Close()
-		return nil, err
-	}
+	go func() {
+		err := g.initializeWatch(ctx, criteria, initialize)
+		close(initialize)
+		if err != nil {
+			logrus.Errorf("error initializing watch for kind %s: %v", g.gvk.Kind, err)
+			sub.Close()
+		}
+	}()
 
 	return result, nil
 }
@@ -287,23 +287,24 @@ func (g *GormDB) Get(ctx context.Context, criteria Criteria) ([]Record, uint, er
 		reqs, ok := criteria.LabelSelector.Requirements()
 		if ok {
 			for _, req := range reqs {
-				if req.Operator() == selection.Equals && req.Key() != "" {
-					query.Where("? in ?", datatypes.JSONQuery("metadata").Value("labels", req.Key()), req.Values().List())
+				l := datatypes.JSONQuery("metadata").Value("labels", req.Key())
+				if req.Operator() == selection.Equals && req.Key() != "" && req.Values().Len() == 1 {
+					query.Where("? = ?", l, req.Values().List()[0])
 				}
 				if req.Operator() == selection.In && req.Key() != "" {
-					query.Where("? in ?", datatypes.JSONQuery("metadata").Value("labels", req.Key()), req.Values().List())
+					query.Where("? in ?", l, req.Values().List())
 				}
 				if req.Operator() == selection.NotIn && req.Key() != "" {
-					query.Where("? not in ?", datatypes.JSONQuery("metadata").Value("labels", req.Key()), req.Values().List())
+					query.Where("? not in ?", l, req.Values().List())
 				}
-				if req.Operator() == selection.NotEquals && req.Key() != "" {
-					query.Where("? not in ?", datatypes.JSONQuery("metadata").Value("labels", req.Key()), req.Values().List())
+				if req.Operator() == selection.NotEquals && req.Key() != "" && req.Values().Len() == 1 {
+					query.Where("? = ?", l, req.Values().List()[0])
 				}
 				if req.Operator() == selection.Exists && req.Key() != "" {
-					query.Where(datatypes.JSONQuery("metadata").HasKey("labels", req.Key()))
+					query.Where(l.Exists())
 				}
 				if req.Operator() == selection.DoesNotExist && req.Key() != "" {
-					query.Where(query.Not(datatypes.JSONQuery("metadata").HasKey("labels", req.Key())))
+					query.Where("not ?", l.Exists())
 				}
 			}
 		} else {

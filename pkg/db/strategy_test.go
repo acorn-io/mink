@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
-func newTestStore(t *testing.T) *Store {
+func newTestStore(t *testing.T) *Strategy {
 	_ = os.Remove("test.db")
 	db, err := gorm.Open(sqlite.Open("memory:test.db"), &gorm.Config{
 		SkipDefaultTransaction: true,
@@ -36,7 +36,7 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 
-	s, err := NewStore(scheme.Scheme, &corev1.Pod{}, "pod", db)
+	s, err := NewStrategy(scheme.Scheme, &corev1.Pod{}, "pod", db)
 	if err != nil {
 		t.Fatal(err)
 	}
