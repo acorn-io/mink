@@ -3,6 +3,7 @@ package datatypes
 // Taken and adapted from https://github.com/go-gorm/datatypes/blob/986ef5926aae40c832854e2a8fe158fd641bfff4/json.go
 
 import (
+	"encoding/json"
 	"strings"
 
 	"gorm.io/gorm"
@@ -68,10 +69,15 @@ func jsonQueryJoin(keys []string) string {
 	var b strings.Builder
 	b.Grow(n)
 	b.WriteString(prefix)
-	b.WriteString(keys[0])
+	b.WriteString(encode(keys[0]))
 	for _, key := range keys[1:] {
 		b.WriteString(".")
-		b.WriteString(key)
+		b.WriteString(encode(key))
 	}
 	return b.String()
+}
+
+func encode(str string) string {
+	d, _ := json.Marshal(str)
+	return string(d)
 }

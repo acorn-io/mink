@@ -13,7 +13,6 @@ import (
 	"gorm.io/gorm"
 	apierror "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -34,8 +33,7 @@ type Strategy struct {
 }
 
 type cont struct {
-	ID     uint `json:"id,omitempty"`
-	Labels string
+	ID uint `json:"id,omitempty"`
 }
 
 func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB) (*Strategy, error) {
@@ -238,10 +236,6 @@ func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.Lis
 		if err := json.Unmarshal(data, cont); err != nil {
 			return nil, err
 		}
-		criteria.LabelSelector, err = labels.Parse(cont.Labels)
-		if err != nil {
-			return nil, err
-		}
 		criteria.After = cont.ID
 	}
 
@@ -269,8 +263,7 @@ func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.Lis
 
 	if opts.Predicate.Limit != 0 && int64(len(records)) == opts.Predicate.Limit {
 		data, err := json.Marshal(&cont{
-			ID:     records[len(records)-2].ID,
-			Labels: opts.Predicate.Label.String(),
+			ID: records[len(records)-2].ID,
 		})
 		if err != nil {
 			return nil, err

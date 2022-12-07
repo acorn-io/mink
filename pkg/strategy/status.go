@@ -15,11 +15,13 @@ func NewScoper(strategy Newer) *ScoperAdapter {
 }
 
 func (s *ScoperAdapter) NamespaceScoped() bool {
-	if o, ok := s.strategy.(NamespaceScoper); ok {
-		return o.NamespaceScoped()
-	}
-	if o, ok := s.strategy.New().(NamespaceScoper); ok {
-		return o.NamespaceScoped()
+	if s != nil {
+		if o, ok := s.strategy.(NamespaceScoper); ok {
+			return o.NamespaceScoped()
+		}
+		if o, ok := s.strategy.New().(NamespaceScoper); ok {
+			return o.NamespaceScoped()
+		}
 	}
 	return true
 }

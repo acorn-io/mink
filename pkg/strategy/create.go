@@ -18,7 +18,7 @@ type Creater interface {
 	New() types.Object
 }
 
-type Warner interface {
+type WarningsOnCreator interface {
 	WarningsOnCreate(ctx context.Context, obj runtime.Object) []string
 }
 
@@ -26,7 +26,7 @@ type Validator interface {
 	Validate(ctx context.Context, obj runtime.Object) field.ErrorList
 }
 
-type PrepareForCreater interface {
+type PrepareForCreator interface {
 	PrepareForCreate(ctx context.Context, obj runtime.Object)
 }
 
@@ -47,7 +47,10 @@ func NewCreate(schema *runtime.Scheme, strategy Creater) *CreateAdapter {
 type CreateAdapter struct {
 	names.NameGenerator
 	*runtime.Scheme
-	strategy Creater
+	strategy          Creater
+	Warner            WarningsOnCreator
+	Validator         Validator
+	PrepareForCreater PrepareForCreator
 }
 
 func (a *CreateAdapter) New() runtime.Object {
@@ -83,7 +86,9 @@ func (a *CreateAdapter) Create(ctx context.Context, obj runtime.Object, createVa
 }
 
 func (a *CreateAdapter) PrepareForCreate(ctx context.Context, obj runtime.Object) {
-	if o, ok := a.strategy.(PrepareForCreater); ok {
+	if a.PrepareForCreater != nil {
+		a.PrepareForCreater.PrepareForCreate(ctx, obj)
+	} else if o, ok := a.strategy.(PrepareForCreator); ok {
 		o.PrepareForCreate(ctx, obj)
 	}
 }
@@ -102,14 +107,19 @@ func (a *CreateAdapter) Validate(ctx context.Context, obj runtime.Object) (resul
 	if err := checkNamespace(a.NamespaceScoped(), obj); err != nil {
 		result = append(result, err)
 	}
-	if o, ok := a.strategy.(Validator); ok {
+	if a.Validator != nil {
+		result = append(result, a.Validator.Validate(ctx, obj)...)
+	} else if o, ok := a.strategy.(Validator); ok {
 		result = append(result, o.Validate(ctx, obj)...)
 	}
 	return
 }
 
 func (a *CreateAdapter) WarningsOnCreate(ctx context.Context, obj runtime.Object) []string {
-	if o, ok := a.strategy.(Warner); ok {
+	if a.Warner != nil {
+		return a.Warner.WarningsOnCreate(ctx, obj)
+	}
+	if o, ok := a.strategy.(WarningsOnCreator); ok {
 		return o.WarningsOnCreate(ctx, obj)
 	}
 	return nil

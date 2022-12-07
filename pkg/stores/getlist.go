@@ -11,27 +11,14 @@ var (
 	_ strategy.Base = (*GetListStore)(nil)
 )
 
-type GetList interface {
-	strategy.Getter
-	strategy.Lister
-}
-
 type GetListStore struct {
 	*strategy.GetAdapter
 	*strategy.ListAdapter
 	*strategy.DestroyAdapter
 	*strategy.NewAdapter
+	*strategy.TableAdapter
 }
 
 func (r *GetListStore) NamespaceScoped() bool {
 	return r.ListAdapter.NamespaceScoped()
-}
-
-func NewGetList(getList GetList) *GetListStore {
-	return &GetListStore{
-		GetAdapter:     strategy.NewGet(getList),
-		ListAdapter:    strategy.NewList(getList),
-		DestroyAdapter: &strategy.DestroyAdapter{},
-		NewAdapter:     strategy.NewNew(getList),
-	}
 }

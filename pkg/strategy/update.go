@@ -23,7 +23,7 @@ type ValidateUpdater interface {
 	ValidateUpdate(ctx context.Context, obj, old runtime.Object) field.ErrorList
 }
 
-type WarningsOnUpdate interface {
+type WarningsOnUpdater interface {
 	WarningsOnUpdate(ctx context.Context, obj, old runtime.Object) []string
 }
 
@@ -43,7 +43,10 @@ var _ rest.Updater = (*UpdateAdapter)(nil)
 
 type UpdateAdapter struct {
 	*CreateAdapter
-	strategy updaterCommon
+	strategy          updaterCommon
+	PrepareForUpdater PrepareForUpdater
+	WarningsOnUpdater WarningsOnUpdater
+	ValidateUpdater   ValidateUpdater
 }
 
 func NewUpdate(schema *runtime.Scheme, strategy Updater) *UpdateAdapter {
@@ -62,7 +65,9 @@ func (a *UpdateAdapter) AllowCreateOnUpdate() bool {
 }
 
 func (a *UpdateAdapter) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {
-	if o, ok := a.strategy.(PrepareForUpdater); ok {
+	if a.PrepareForUpdater != nil {
+		a.PrepareForUpdater.PrepareForUpdate(ctx, obj, old)
+	} else if o, ok := a.strategy.(PrepareForUpdater); ok {
 		o.PrepareForUpdate(ctx, obj, old)
 	}
 }
@@ -71,14 +76,19 @@ func (a *UpdateAdapter) ValidateUpdate(ctx context.Context, obj, old runtime.Obj
 	if err := checkNamespace(a.NamespaceScoped(), obj); err != nil {
 		result = append(result, err)
 	}
-	if o, ok := a.strategy.(ValidateUpdater); ok {
+	if a.ValidateUpdater != nil {
+		result = append(result, a.ValidateUpdater.ValidateUpdate(ctx, obj, old)...)
+	} else if o, ok := a.strategy.(ValidateUpdater); ok {
 		result = append(result, o.ValidateUpdate(ctx, obj, old)...)
 	}
 	return
 }
 
 func (a *UpdateAdapter) WarningsOnUpdate(ctx context.Context, obj, old runtime.Object) []string {
-	if o, ok := a.strategy.(WarningsOnUpdate); ok {
+	if a.WarningsOnUpdater != nil {
+		return a.WarningsOnUpdater.WarningsOnUpdate(ctx, obj, old)
+	}
+	if o, ok := a.strategy.(WarningsOnUpdater); ok {
 		return o.WarningsOnUpdate(ctx, obj, old)
 	}
 	return nil

@@ -10,10 +10,6 @@ var (
 	_ strategy.Base = (*ListOnlyStore)(nil)
 )
 
-type ListOnly interface {
-	strategy.Lister
-}
-
 type ListOnlyStore struct {
 	*strategy.ListAdapter
 	*strategy.DestroyAdapter
@@ -22,12 +18,4 @@ type ListOnlyStore struct {
 
 func (r *ListOnlyStore) NamespaceScoped() bool {
 	return r.ListAdapter.NamespaceScoped()
-}
-
-func NewListOnly(list ListOnly) *ListOnlyStore {
-	return &ListOnlyStore{
-		ListAdapter:    strategy.NewList(list),
-		DestroyAdapter: &strategy.DestroyAdapter{},
-		NewAdapter:     strategy.NewNew(list),
-	}
 }

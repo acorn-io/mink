@@ -28,6 +28,8 @@ func ForStores(scheme AddToScheme, stores map[string]rest.Storage, groupVersion 
 	parameterCodec := runtime.NewParameterCodec(newScheme)
 	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(groupVersion.Group, newScheme, parameterCodec, codecs)
 	apiGroupInfo.VersionedResourcesStorageMap[groupVersion.Version] = stores
-	apiGroupInfo.NegotiatedSerializer = serializer.NewNoProtobufSerializer(apiGroupInfo.NegotiatedSerializer)
+	if groupVersion.Group != "" {
+		apiGroupInfo.NegotiatedSerializer = serializer.NewNoProtobufSerializer(apiGroupInfo.NegotiatedSerializer)
+	}
 	return &apiGroupInfo, nil
 }

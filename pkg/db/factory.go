@@ -31,6 +31,10 @@ func (f *Factory) Scheme() *runtime.Scheme {
 	return f.schema
 }
 
+type TableNamer interface {
+	TableName() string
+}
+
 func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, error) {
 	gvk, err := apiutil.GVKForObject(obj, f.schema)
 	if err != nil {
@@ -49,6 +53,9 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 			return nil, err
 		}
 		tableName = strings.ToLower(gvk.Kind)
+		if tn, ok := obj.(TableNamer); ok {
+			tableName = tn.TableName()
+		}
 		if f.AutoMigrate {
 			if err := gdb.Table(tableName).AutoMigrate(&Record{}); err != nil {
 				return nil, err
