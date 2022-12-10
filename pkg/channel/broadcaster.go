@@ -8,6 +8,7 @@ import (
 type Broadcaster[T any] struct {
 	lock      sync.Mutex
 	consumers map[*Subscription[T]]struct{}
+	done      chan struct{}
 	C         chan T
 	closed    bool
 }
@@ -15,11 +16,13 @@ type Broadcaster[T any] struct {
 func NewBroadcaster[T any](c chan T) *Broadcaster[T] {
 	return &Broadcaster[T]{
 		consumers: map[*Subscription[T]]struct{}{},
+		done:      make(chan struct{}),
 		C:         c,
 	}
 }
 
 func (b *Broadcaster[T]) Start(ctx context.Context) {
+	defer close(b.done)
 	for {
 		select {
 		case <-ctx.Done():
@@ -27,6 +30,11 @@ func (b *Broadcaster[T]) Start(ctx context.Context) {
 			return
 		case i, ok := <-b.C:
 			if !ok {
+				b.lock.Lock()
+				for sub := range b.consumers {
+					sub.close(false)
+				}
+				b.lock.Unlock()
 				return
 			}
 			b.lock.Lock()
@@ -36,6 +44,19 @@ func (b *Broadcaster[T]) Start(ctx context.Context) {
 			b.lock.Unlock()
 		}
 	}
+}
+
+func (b *Broadcaster[T]) Shutdown() {
+	b.lock.Lock()
+	if b.closed {
+		b.lock.Unlock()
+		return
+	}
+	b.closed = true
+	close(b.C)
+	b.lock.Unlock()
+
+	<-b.done
 }
 
 func (b *Broadcaster[T]) Close() {
@@ -83,6 +104,12 @@ func (s *Subscription[T]) Close() {
 
 func (s *Subscription[T]) close(lock bool) {
 	if lock {
+		go func() {
+			// empty the channel to ensure that the broadcaster is not blocking on writing to this subscription while
+			// we wait for the broadcaster to release the lock
+			for range s.C {
+			}
+		}()
 		s.broadcaster.lock.Lock()
 		defer s.broadcaster.lock.Unlock()
 	}
