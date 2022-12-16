@@ -2,54 +2,55 @@ package translation
 
 import (
 	"context"
-	"strings"
 
 	mtypes "github.com/acorn-io/mink/pkg/types"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/storage"
 )
 
-func NewDefaultTranslator(obj mtypes.Object, objList mtypes.ObjectList) *DefaultTranslator {
-	return &DefaultTranslator{
-		obj:     obj,
-		objList: objList,
+type SimpleTranslator interface {
+	FromPublic(obj mtypes.Object) mtypes.Object
+	ToPublic(obj mtypes.Object) mtypes.Object
+}
+
+func NewSimpleTranslator(translator SimpleTranslator, pubType mtypes.Object, pubTypeList mtypes.ObjectList) Translator {
+	return &simpleTranslator{
+		obj:        pubType,
+		objList:    pubTypeList,
+		translator: translator,
 	}
 }
 
-type DefaultTranslator struct {
-	obj     mtypes.Object
-	objList mtypes.ObjectList
+type simpleTranslator struct {
+	obj        mtypes.Object
+	objList    mtypes.ObjectList
+	translator SimpleTranslator
 }
 
-func (s *DefaultTranslator) FromPublicName(ctx context.Context, namespace, name string) (string, string, error) {
+func (s *simpleTranslator) FromPublicName(ctx context.Context, namespace, name string) (string, string, error) {
 	return namespace, name, nil
 }
 
-func (s *DefaultTranslator) ListOpts(namespace string, opts storage.ListOptions) (string, storage.ListOptions) {
+func (s *simpleTranslator) ListOpts(namespace string, opts storage.ListOptions) (string, storage.ListOptions) {
 	return namespace, opts
 }
 
-func (s *DefaultTranslator) NewPublic() mtypes.Object {
+func (s *simpleTranslator) NewPublic() mtypes.Object {
 	return s.obj.DeepCopyObject().(mtypes.Object)
 }
 
-func (s *DefaultTranslator) NewPublicList() mtypes.ObjectList {
+func (s *simpleTranslator) NewPublicList() mtypes.ObjectList {
 	return s.objList.DeepCopyObject().(mtypes.ObjectList)
 }
 
-func (s *DefaultTranslator) FromPublic(ctx context.Context, obj runtime.Object) (result mtypes.Object, _ error) {
-	kobj := obj.(mtypes.Object)
-	kobj.SetUID(types.UID(strings.TrimSuffix(string(kobj.GetUID()), "-a")))
-	return kobj, nil
+func (s *simpleTranslator) FromPublic(ctx context.Context, obj runtime.Object) (result mtypes.Object, _ error) {
+	return s.translator.FromPublic(obj.(mtypes.Object)), nil
 }
 
-func (s *DefaultTranslator) ToPublic(objs ...runtime.Object) (result []mtypes.Object) {
+func (s *simpleTranslator) ToPublic(objs ...runtime.Object) (result []mtypes.Object) {
 	result = make([]mtypes.Object, 0, len(objs))
 	for _, obj := range objs {
-		kobj := obj.(mtypes.Object)
-		kobj.SetUID(kobj.GetUID() + "-a")
-		result = append(result, kobj)
+		result = append(result, s.translator.ToPublic(obj.(mtypes.Object)))
 	}
 	return
 }

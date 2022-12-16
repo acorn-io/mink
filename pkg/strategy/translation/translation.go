@@ -2,6 +2,7 @@ package translation
 
 import (
 	"context"
+	"strings"
 
 	"github.com/acorn-io/mink/pkg/strategy"
 	"github.com/acorn-io/mink/pkg/types"
@@ -9,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
 )
@@ -36,11 +38,27 @@ type Strategy struct {
 	translator Translator
 }
 
+func (t *Strategy) toPublicObjects(objs ...runtime.Object) []types.Object {
+	uids := map[ktypes.UID]bool{}
+	for _, obj := range objs {
+		uids[obj.(types.Object).GetUID()] = true
+	}
+
+	result := t.translator.ToPublic(objs...)
+	for _, obj := range result {
+		if uids[obj.GetUID()] {
+			obj.SetUID(ktypes.UID(obj.GetUID() + "-p"))
+		}
+	}
+
+	return result
+}
+
 func (t *Strategy) toPublic(obj runtime.Object, err error, namespace, name string) (types.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	objs := t.translator.ToPublic(obj)
+	objs := t.toPublicObjects(obj)
 	for _, obj := range objs {
 		if obj.GetNamespace() == namespace && obj.GetName() == name {
 			return obj, nil
@@ -53,7 +71,7 @@ func (t *Strategy) toPublic(obj runtime.Object, err error, namespace, name strin
 }
 
 func (t *Strategy) Create(ctx context.Context, object types.Object) (types.Object, error) {
-	newObj, err := t.translator.FromPublic(ctx, object)
+	newObj, err := t.fromPublic(ctx, object)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +92,17 @@ func (t *Strategy) Get(ctx context.Context, namespace, name string) (types.Objec
 	return t.toPublic(o, err, namespace, name)
 }
 
-func (t *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, error) {
+func (t *Strategy) fromPublic(ctx context.Context, obj types.Object) (types.Object, error) {
 	newObj, err := t.translator.FromPublic(ctx, obj)
+	if err != nil {
+		return nil, err
+	}
+	newObj.SetUID(ktypes.UID(strings.TrimSuffix(string(newObj.GetUID()), "-p")))
+	return newObj, nil
+}
+
+func (t *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, error) {
+	newObj, err := t.fromPublic(ctx, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -84,12 +111,12 @@ func (t *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, 
 }
 
 func (t *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
-	newObj, err := t.translator.FromPublic(ctx, obj)
+	newObj, err := t.fromPublic(ctx, obj)
 	if err != nil {
 		return nil, err
 	}
 	o, err := t.strategy.UpdateStatus(ctx, newObj)
-	return t.translator.ToPublic(o)[0], err
+	return t.toPublicObjects(o)[0], err
 }
 
 func (t *Strategy) toPublicList(obj types.ObjectList) (types.ObjectList, error) {
@@ -108,7 +135,7 @@ func (t *Strategy) toPublicList(obj types.ObjectList) (types.ObjectList, error) 
 	}
 
 	publicItems := make([]runtime.Object, 0, len(items))
-	for _, obj := range t.translator.ToPublic(items...) {
+	for _, obj := range t.toPublicObjects(items...) {
 		publicItems = append(publicItems, obj)
 	}
 
@@ -139,7 +166,7 @@ func (t *Strategy) NewList() types.ObjectList {
 }
 
 func (t *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, error) {
-	newObj, err := t.translator.FromPublic(ctx, obj)
+	newObj, err := t.fromPublic(ctx, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +226,7 @@ func (t *Strategy) Watch(ctx context.Context, namespace string, opts storage.Lis
 			case watch.Deleted:
 				fallthrough
 			case watch.Modified:
-				for _, obj := range t.translator.ToPublic(event.Object) {
+				for _, obj := range t.toPublicObjects(event.Object) {
 					if ok, err := opts.Predicate.Matches(obj); err != nil {
 						result <- watch.Event{
 							Type:   watch.Error,

@@ -19,6 +19,5 @@ type GetListUpdateDeleteStore struct {
 	*strategy.ListAdapter
 	*strategy.DeleteAdapter
 	*strategy.DestroyAdapter
-	*strategy.NewAdapter
 	*strategy.TableAdapter
 }
