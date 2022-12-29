@@ -117,6 +117,10 @@ func (a *UpdateAdapter) update(ctx context.Context, status bool, name string, ob
 		return nil, false, err
 	}
 
+	if obj.(types.Object).GetResourceVersion() == "" && existing.(types.Object).GetResourceVersion() != "" {
+		obj.(types.Object).SetResourceVersion(existing.(types.Object).GetResourceVersion())
+	}
+
 	if doCreate {
 		if objectMeta, err := meta.Accessor(obj); err == nil {
 			rest.FillObjectMetaSystemFields(objectMeta)

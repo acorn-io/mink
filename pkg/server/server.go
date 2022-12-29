@@ -40,7 +40,7 @@ type Config struct {
 	Scheme               *runtime.Scheme
 	CodecFactory         *serializer.CodecFactory
 	APIGroups            []*server.APIGroupInfo
-	Middleware           func(http.Handler) http.Handler
+	Middleware           []func(http.Handler) http.Handler
 	PostStartFunc        server.PostStartHookFunc
 }
 
@@ -153,8 +153,8 @@ func (s *Server) Run(ctx context.Context) error {
 	address := fmt.Sprintf("0.0.0.0:%d", s.config.HTTPListenPort)
 
 	var handler http.Handler = readyServer.Handler
-	if s.config.Middleware != nil {
-		handler = s.config.Middleware(handler)
+	for i := len(s.config.Middleware) - 1; i >= 0; i-- {
+		handler = s.config.Middleware[i](handler)
 	}
 
 	httpServer := &http.Server{
