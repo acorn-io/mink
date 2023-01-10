@@ -1,39 +1,27 @@
-package strategy
+package stores
 
 import (
 	"context"
 
-	"github.com/acorn-io/mink/pkg/types"
+	"github.com/acorn-io/mink/pkg/strategy"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/registry/rest"
 )
 
-var _ rest.Storage = (*Status)(nil)
-
-type StatusUpdater interface {
-	Getter
-	Creater
-
-	UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error)
-}
-
 type Status struct {
-	update                *UpdateAdapter
-	get                   *GetAdapter
+	update                *strategy.UpdateAdapter
+	get                   *strategy.GetAdapter
 	strategy              any
 	defaultTableConverter rest.TableConvertor
 }
 
-func NewStatus(scheme *runtime.Scheme, strategy StatusUpdater) *Status {
+func NewStatus(scheme *runtime.Scheme, updater strategy.StatusUpdater) rest.Storage {
 	return &Status{
-		update: &UpdateAdapter{
-			CreateAdapter: NewCreate(scheme, strategy),
-			strategy:      strategy,
-		},
-		get:                   NewGet(strategy),
-		strategy:              strategy,
+		update:                strategy.NewUpdateStatus(scheme, updater),
+		get:                   strategy.NewGet(updater),
+		strategy:              updater,
 		defaultTableConverter: rest.NewDefaultTableConvertor(schema.GroupResource{}),
 	}
 }
@@ -50,7 +38,7 @@ func (s *Status) Get(ctx context.Context, name string, options *metav1.GetOption
 }
 
 func (s *Status) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
-	return s.update.update(ctx, true, name, objInfo, createValidation, updateValidation, false, options)
+	return s.update.Update(ctx, name, objInfo, createValidation, updateValidation, false, options)
 }
 
 func (s *Status) ConvertToTable(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {

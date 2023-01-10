@@ -43,6 +43,7 @@ var _ rest.Updater = (*UpdateAdapter)(nil)
 
 type UpdateAdapter struct {
 	*CreateAdapter
+	status            bool
 	strategy          updaterCommon
 	PrepareForUpdater PrepareForUpdater
 	WarningsOnUpdater WarningsOnUpdater
@@ -95,7 +96,7 @@ func (a *UpdateAdapter) WarningsOnUpdate(ctx context.Context, obj, old runtime.O
 }
 
 func (a *UpdateAdapter) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
-	return a.update(ctx, false, name, objInfo, createValidation, updateValidation, forceAllowCreate, options)
+	return a.update(ctx, a.status, name, objInfo, createValidation, updateValidation, forceAllowCreate, options)
 }
 
 func (a *UpdateAdapter) update(ctx context.Context, status bool, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {

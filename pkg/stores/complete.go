@@ -10,10 +10,6 @@ var (
 	_ strategy.Base = (*Complete)(nil)
 )
 
-func NewWithStatus(scheme *runtime.Scheme, s strategy.CompleteStrategy) (rest.Storage, rest.Storage) {
-	return newComplete(scheme, s)
-}
-
 func NewComplete(scheme *runtime.Scheme, s strategy.CompleteStrategy) rest.Storage {
 	store, _ := newComplete(scheme, s)
 	return store
