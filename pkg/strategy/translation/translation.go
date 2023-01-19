@@ -19,8 +19,8 @@ var _ strategy.CompleteStrategy = (*Strategy)(nil)
 
 type Translator interface {
 	FromPublicName(ctx context.Context, namespace, name string) (string, string, error)
-	ListOpts(namespace string, opts storage.ListOptions) (string, storage.ListOptions)
-	ToPublic(obj ...runtime.Object) []types.Object
+	ListOpts(ctx context.Context, namespace string, opts storage.ListOptions) (string, storage.ListOptions, error)
+	ToPublic(ctx context.Context, obj ...runtime.Object) ([]types.Object, error)
 	FromPublic(ctx context.Context, obj runtime.Object) (types.Object, error)
 	NewPublic() types.Object
 	NewPublicList() types.ObjectList
@@ -38,27 +38,33 @@ type Strategy struct {
 	translator Translator
 }
 
-func (t *Strategy) toPublicObjects(objs ...runtime.Object) []types.Object {
+func (t *Strategy) toPublicObjects(ctx context.Context, objs ...runtime.Object) ([]types.Object, error) {
 	uids := map[ktypes.UID]bool{}
 	for _, obj := range objs {
 		uids[obj.(types.Object).GetUID()] = true
 	}
 
-	result := t.translator.ToPublic(objs...)
+	result, err := t.translator.ToPublic(ctx, objs...)
+	if err != nil {
+		return nil, err
+	}
 	for _, obj := range result {
 		if uids[obj.GetUID()] {
 			obj.SetUID(ktypes.UID(obj.GetUID() + "-p"))
 		}
 	}
 
-	return result
+	return result, nil
 }
 
-func (t *Strategy) toPublic(obj runtime.Object, err error, namespace, name string) (types.Object, error) {
+func (t *Strategy) toPublic(ctx context.Context, obj runtime.Object, err error, namespace, name string) (types.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	objs := t.toPublicObjects(obj)
+	objs, err := t.toPublicObjects(ctx, obj)
+	if err != nil {
+		return nil, err
+	}
 	for _, obj := range objs {
 		if obj.GetNamespace() == namespace && obj.GetName() == name {
 			return obj, nil
@@ -76,7 +82,7 @@ func (t *Strategy) Create(ctx context.Context, object types.Object) (types.Objec
 		return nil, err
 	}
 	o, err := t.strategy.Create(ctx, newObj)
-	return t.toPublic(o, err, object.GetNamespace(), object.GetName())
+	return t.toPublic(ctx, o, err, object.GetNamespace(), object.GetName())
 }
 
 func (t *Strategy) New() types.Object {
@@ -89,7 +95,7 @@ func (t *Strategy) Get(ctx context.Context, namespace, name string) (types.Objec
 		return nil, err
 	}
 	o, err := t.strategy.Get(ctx, newNamespace, newName)
-	return t.toPublic(o, err, namespace, name)
+	return t.toPublic(ctx, o, err, namespace, name)
 }
 
 func (t *Strategy) fromPublic(ctx context.Context, obj types.Object) (types.Object, error) {
@@ -107,7 +113,7 @@ func (t *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, 
 		return nil, err
 	}
 	o, err := t.strategy.Update(ctx, newObj)
-	return t.toPublic(o, err, obj.GetNamespace(), obj.GetName())
+	return t.toPublic(ctx, o, err, obj.GetNamespace(), obj.GetName())
 }
 
 func (t *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
@@ -116,10 +122,17 @@ func (t *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Ob
 		return nil, err
 	}
 	o, err := t.strategy.UpdateStatus(ctx, newObj)
-	return t.toPublicObjects(o)[0], err
+	if err != nil {
+		return nil, err
+	}
+	objs, err := t.toPublicObjects(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+	return objs[0], nil
 }
 
-func (t *Strategy) toPublicList(obj types.ObjectList) (types.ObjectList, error) {
+func (t *Strategy) toPublicList(ctx context.Context, obj types.ObjectList) (types.ObjectList, error) {
 	var (
 		items      []runtime.Object
 		list       = obj.(types.ObjectList)
@@ -135,7 +148,12 @@ func (t *Strategy) toPublicList(obj types.ObjectList) (types.ObjectList, error) 
 	}
 
 	publicItems := make([]runtime.Object, 0, len(items))
-	for _, obj := range t.toPublicObjects(items...) {
+	objs, err := t.toPublicObjects(ctx, items...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, obj := range objs {
 		publicItems = append(publicItems, obj)
 	}
 
@@ -158,7 +176,7 @@ func (t *Strategy) List(ctx context.Context, namespace string, opts storage.List
 	if err != nil {
 		return nil, err
 	}
-	return t.toPublicList(o)
+	return t.toPublicList(ctx, o)
 }
 
 func (t *Strategy) NewList() types.ObjectList {
@@ -171,7 +189,7 @@ func (t *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, 
 		return nil, err
 	}
 	o, err := t.strategy.Delete(ctx, newObj)
-	return t.toPublic(o, err, obj.GetNamespace(), obj.GetName())
+	return t.toPublic(ctx, o, err, obj.GetNamespace(), obj.GetName())
 }
 
 func (t *Strategy) translateListOpts(ctx context.Context, namespace string, opts storage.ListOptions) (string, storage.ListOptions, error) {
@@ -192,8 +210,7 @@ func (t *Strategy) translateListOpts(ctx context.Context, namespace string, opts
 		}
 	}
 
-	namespace, opts = t.translator.ListOpts(namespace, opts)
-	return namespace, opts, nil
+	return t.translator.ListOpts(ctx, namespace, opts)
 }
 
 func (t *Strategy) Watch(ctx context.Context, namespace string, opts storage.ListOptions) (<-chan watch.Event, error) {
@@ -226,7 +243,16 @@ func (t *Strategy) Watch(ctx context.Context, namespace string, opts storage.Lis
 			case watch.Deleted:
 				fallthrough
 			case watch.Modified:
-				for _, obj := range t.toPublicObjects(event.Object) {
+				objs, err := t.toPublicObjects(ctx, event.Object)
+				if err != nil {
+					result <- watch.Event{
+						Type:   watch.Error,
+						Object: &apierrors.NewInternalError(err).ErrStatus,
+					}
+					continue
+				}
+
+				for _, obj := range objs {
 					if ok, err := opts.Predicate.Matches(obj); err != nil {
 						result <- watch.Event{
 							Type:   watch.Error,
