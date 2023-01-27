@@ -350,6 +350,7 @@ func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (t
 	if status {
 		newRecord.Generation = existing.Generation
 		newRecord.Data = existing.Data
+		newRecord.Metadata = existing.Metadata
 	} else {
 		if newRecord.Deleted == nil && !obj.GetDeletionTimestamp().IsZero() {
 			newRecord.Deleted = &obj.GetDeletionTimestamp().Time
