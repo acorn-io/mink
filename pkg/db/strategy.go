@@ -150,6 +150,14 @@ func (s *Strategy) Watch(ctx context.Context, namespace string, opts storage.Lis
 				continue
 			}
 
+			if criteria.Name != "" && record.Name != criteria.Name {
+				continue
+			}
+
+			if criteria.Namespace != nil && record.Namespace != *criteria.Namespace {
+				continue
+			}
+
 			event := watch.Event{}
 			match := true
 			err := s.recordIntoObject(&record, obj)
