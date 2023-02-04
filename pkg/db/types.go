@@ -14,17 +14,18 @@ type Record struct {
 	Kind       string
 	Version    string
 	APIGroup   string
-	Name       string
-	Namespace  string
+	Name       string `gorm:"index:idx_ns_name"`
+	Namespace  string `gorm:"index:idx_ns_name"`
 	UID        string
 	Generation int
-	Previous   *uint
+	Previous   *uint `gorm:"index:idx_previous,unique"`
 	Create     bool
 	Created    time.Time
 	Updated    time.Time
 	Deleted    *time.Time
 	Removed    *time.Time
-	Garbage    *time.Time
+	Garbage    bool `gorm:"index:idx_garbage;not null;default:0"`
+	Latest     bool `gorm:"index:idx_latest;default:0"`
 	Metadata   datatypes.JSON
 	Data       datatypes.JSON
 	Status     datatypes.JSON
@@ -50,11 +51,14 @@ type Criteria struct {
 	FieldSelector     fields.Selector
 	IncludeDeleted    bool
 	IncludeGC         bool
+
+	ignoreCompactionCheck bool
 }
 
 type DB interface {
+	Transaction(ctx context.Context, do func(ctx context.Context) error) error
 	Watch(ctx context.Context, criteria WatchCriteria) (chan Record, error)
 	Get(ctx context.Context, criteria Criteria) ([]Record, uint, error)
 	Insert(ctx context.Context, rec *Record) error
-	Start(ctx context.Context)
+	Start(ctx context.Context) error
 }

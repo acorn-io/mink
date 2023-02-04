@@ -61,8 +61,7 @@ func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, d
 		objList: objList,
 	}
 	s.dbCtx, s.dbCancel = context.WithCancel(context.Background())
-	s.db.Start(s.dbCtx)
-	return s, nil
+	return s, s.db.Start(s.dbCtx)
 }
 
 func (s *Strategy) Destroy() {
@@ -355,6 +354,7 @@ func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (t
 	newRecord.Deleted = existing.Deleted
 	newRecord.Removed = existing.Removed
 	newRecord.UID = existing.UID
+	newRecord.Updated = time.Now()
 	if status {
 		newRecord.Generation = existing.Generation
 		newRecord.Data = existing.Data
@@ -384,7 +384,15 @@ func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (t
 	return obj, s.recordIntoObject(newRecord, obj)
 }
 
-func (s *Strategy) Create(ctx context.Context, obj types.Object) (types.Object, error) {
+func (s *Strategy) Create(ctx context.Context, obj types.Object) (result types.Object, err error) {
+	err = s.db.Transaction(ctx, func(ctx context.Context) error {
+		result, err = s.create(ctx, obj)
+		return err
+	})
+	return
+}
+
+func (s *Strategy) create(ctx context.Context, obj types.Object) (types.Object, error) {
 	existing, _, err := s.db.Get(ctx, Criteria{
 		Name:              obj.GetName(),
 		Namespace:         strptr(obj.GetNamespace()),
@@ -422,20 +430,24 @@ func (s *Strategy) Create(ctx context.Context, obj types.Object) (types.Object, 
 func (s *Strategy) recordToMap(rec *Record) (map[string]interface{}, error) {
 	metadata := map[string]interface{}{}
 	data := map[string]interface{}{}
-	err := json.Unmarshal(rec.Data, &data)
-	if err != nil {
-		return nil, err
+	if len(rec.Data) > 0 {
+		err := json.Unmarshal(rec.Data, &data)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	err = json.Unmarshal(rec.Metadata, &metadata)
-	if err != nil {
-		return nil, err
+	if len(rec.Metadata) > 0 {
+		err := json.Unmarshal(rec.Metadata, &metadata)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(rec.Status) > 0 {
 		status := map[string]interface{}{}
 
-		err = json.Unmarshal(rec.Status, &status)
+		err := json.Unmarshal(rec.Status, &status)
 		if err != nil {
 			return nil, err
 		}

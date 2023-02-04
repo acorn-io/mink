@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/acorn-io/mink/pkg/channel"
@@ -13,7 +16,17 @@ import (
 	"gorm.io/gorm"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
+)
+
+const (
+	defaultDeleteRetainCount     = 1000
+	defaultCompactionRetainCount = 1000
+	deleteBatchSize              = 1000
+	compactBatchSize             = 1000
+	watchLoopSleep               = 2 * time.Second
+	defaultGCIntervalSeconds     = 1800
 )
 
 type GormDB struct {
@@ -22,6 +35,11 @@ type GormDB struct {
 	gvk         schema.GroupVersionKind
 	trigger     chan struct{}
 	broadcaster *channel.Broadcaster[Record]
+
+	compactionLock sync.RWMutex
+	compaction     uint
+	lastIDLock     sync.Mutex
+	lastID         uint
 }
 
 func NewDB(tableName string, gvk schema.GroupVersionKind, db *gorm.DB) *GormDB {
@@ -69,6 +87,16 @@ func (g *GormDB) readEvents(ctx context.Context, init bool, lastID uint) (uint, 
 			g.fill(ctx, lastID)
 			return lastID, nil
 		}
+		if record.Name == "" && record.Namespace != "" {
+			compact, err := strconv.Atoi(record.Namespace)
+			if err == nil {
+				g.compactionLock.Lock()
+				if uint(compact) > g.compaction {
+					g.compaction = uint(compact)
+				}
+				g.compactionLock.Unlock()
+			}
+		}
 		g.broadcaster.C <- record
 		lastID = record.ID
 	}
@@ -76,13 +104,184 @@ func (g *GormDB) readEvents(ctx context.Context, init bool, lastID uint) (uint, 
 	return lastID, nil
 }
 
-func (g *GormDB) Start(ctx context.Context) {
+func (g *GormDB) Start(ctx context.Context) (err error) {
+	// assume everything is compacted upfront
+	g.compaction, err = g.getMaxID(ctx)
+	if err != nil {
+		return err
+	}
 	if g.db != nil {
 		go g.broadcaster.Start(ctx)
 		go g.watchLoop(ctx)
+		go g.gc(ctx)
 	}
+	return nil
 }
 
+func (g *GormDB) getEnv(key string, def uint) uint {
+	envNames := []string{
+		key + "_" + strings.ToUpper(g.tableName),
+		key + "_" + g.tableName,
+		key,
+	}
+	for _, envName := range envNames {
+		s := os.Getenv(envName)
+		if s != "" {
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				panic(fmt.Sprintf("Invalid value %s=%s: %v", envName, s, err))
+			}
+			return uint(i)
+		}
+	}
+
+	return def
+}
+
+func (g *GormDB) getCompactRetainCount() uint {
+	return g.getEnv("MINK_COMPACT_RETAIN", defaultCompactionRetainCount)
+}
+
+func (g *GormDB) getDeleteRetainCount() int {
+	return int(g.getEnv("MINK_DELETE_RETAIN", defaultDeleteRetainCount))
+}
+
+func (g *GormDB) gc(ctx context.Context) {
+	if g.getCompactRetainCount() == 0 {
+		logrus.Debugf("Compaction and deletion disabled for [%s]", g.tableName)
+		return
+	}
+
+	var (
+		lastSuccessCompaction uint
+		// first loop is less delay
+		delay = wait.Jitter(10*time.Second, 2)
+	)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+
+		delay = wait.Jitter(time.Duration(g.getEnv("MINK_GC_INTERVAL_SECONDS", defaultGCIntervalSeconds))*time.Second, 0)
+
+		if lastSuccessCompaction == 0 {
+			logrus.Debugf("Starting compaction goroutine for [%s]", g.tableName)
+			minID, err := g.getMinID(ctx)
+			if err != nil {
+				logrus.Errorf("failed to get minimum ID for compaction: %v", err)
+			}
+			lastSuccessCompaction = minID
+		}
+
+		g.lastIDLock.Lock()
+		nextCompactionID := g.lastID
+		g.lastIDLock.Unlock()
+
+		if nextCompactionID < g.getCompactRetainCount() {
+			continue
+		}
+		nextCompactionID -= g.getCompactRetainCount()
+
+		if cont, err := g.markCompaction(ctx, nextCompactionID); err != nil {
+			g.compactionLock.Unlock()
+			logrus.Errorf("Failed to write compaction record [%s] %d: %v", g.tableName, nextCompactionID, err)
+			continue
+		} else if !cont {
+			logrus.Debugf("Skipping compaction [%s]", g.tableName)
+			continue
+		}
+
+		g.compactionLock.Lock()
+		if nextCompactionID > g.compaction {
+			g.compaction = nextCompactionID
+		}
+		g.compactionLock.Unlock()
+
+		// Make sure peers know about compaction change
+		time.Sleep(2 * watchLoopSleep)
+
+		for lastSuccessCompaction < nextCompactionID {
+			var (
+				records []Record
+				ids     []uint
+			)
+
+			nextBatch := lastSuccessCompaction + compactBatchSize
+			if nextBatch > nextCompactionID {
+				nextBatch = nextCompactionID
+			}
+
+			logrus.Debugf("Running compaction [%s] %d => %d", g.tableName, lastSuccessCompaction, nextBatch)
+			db := g.newQuery(ctx).
+				Select("id", "name", "removed", "previous").
+				Where("id >= ? and id < ?", lastSuccessCompaction, nextBatch).Scan(&records)
+			if db.Error != nil {
+				logrus.Errorf("Failed running compaction [%s] %d => %d: %v", g.tableName, lastSuccessCompaction, nextBatch,
+					db.Error)
+				continue
+			}
+
+			for _, record := range records {
+				if record.Previous != nil {
+					ids = append(ids, *record.Previous)
+				}
+				// delete fill records or removed
+				if record.Name == "" || record.Removed != nil {
+					ids = append(ids, record.ID)
+				}
+			}
+
+			db = g.newQuery(ctx).
+				Where("garbage is FALSE and id in (?)", ids).
+				Update("garbage", true)
+			if db.Error != nil {
+				logrus.Errorf("Failed updating compaction [%s] %d => %d: %v", g.tableName, lastSuccessCompaction, nextBatch,
+					db.Error)
+			} else if db.RowsAffected > 0 {
+				logrus.Debugf("compacted [%s] [%d] rows", g.tableName, db.RowsAffected)
+			}
+
+			lastSuccessCompaction = nextBatch
+		}
+
+		deleteCount := g.getDeleteRetainCount()
+		if deleteCount == 0 {
+			logrus.Debugf("Deletion disabled for [%s]", g.tableName)
+			continue
+		}
+
+		for {
+			var (
+				ids []uint
+			)
+
+			db := g.newQuery(ctx).
+				Select("id").
+				Where("garbage IS TRUE").
+				Order("id ASC").
+				Limit(deleteCount + deleteBatchSize).
+				Scan(&ids)
+			if db.Error != nil {
+				logrus.Errorf("Failed finding deletion [%s]: %v", g.tableName, db.Error)
+				continue
+			}
+
+			if len(ids) > deleteCount {
+				ids = ids[:len(ids)-deleteCount]
+				logrus.Debugf("Deleting [%d] records for [%s]: %v", len(ids), g.tableName, ids)
+				db := g.newQuery(ctx).
+					Delete("id in ?", ids)
+				if db.Error != nil {
+					logrus.Errorf("Failed running deletion [%s]: %v", g.tableName, db.Error)
+				}
+			} else {
+				break
+			}
+		}
+	}
+}
 func (g *GormDB) watchLoop(ctx context.Context) {
 	var (
 		lastID uint
@@ -90,10 +289,15 @@ func (g *GormDB) watchLoop(ctx context.Context) {
 	)
 
 	for {
+		// set last id for compaction
+		g.lastIDLock.Lock()
+		g.lastID = lastID
+		g.lastIDLock.Unlock()
+
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(2 * time.Second):
+		case <-time.After(watchLoopSleep):
 		case <-time.After(time.Minute):
 			g.sendBookmark(ctx, lastID)
 			continue
@@ -109,6 +313,28 @@ func (g *GormDB) watchLoop(ctx context.Context) {
 	}
 }
 
+func (g *GormDB) markCompaction(ctx context.Context, id uint) (bool, error) {
+	cont := false
+	err := g.Transaction(ctx, func(ctx context.Context) error {
+		var lastRecord Record
+		resp := g.newQuery(ctx).Last(&lastRecord)
+		if resp.Error != nil {
+			return resp.Error
+		}
+		if lastRecord.Name == "" && lastRecord.Namespace != "" {
+			// last record is compaction record, so don't insert another, otherwise we just
+			// continue to insert compaction records as the only new data in the table
+			return nil
+		}
+		cont = true
+		logrus.Debugf("Inserting compaction record for [%s] [%d]", g.tableName, id)
+		return g.Insert(ctx, &Record{
+			Namespace: strconv.FormatUint(uint64(id), 10),
+		})
+	})
+	return cont, err
+}
+
 func (g *GormDB) fill(ctx context.Context, id uint) {
 	err := g.Insert(ctx, &Record{
 		ID: id,
@@ -118,7 +344,7 @@ func (g *GormDB) fill(ctx context.Context, id uint) {
 
 func (g *GormDB) since(ctx context.Context, id uint) ([]Record, error) {
 	var records []Record
-	db := g.db.WithContext(ctx)
+	db := g.getDB(ctx).WithContext(ctx)
 	resp := db.Table(g.tableName).Model(records).Where("id > ?", id).Find(&records)
 	return records, resp.Error
 }
@@ -131,12 +357,13 @@ func (g *GormDB) initializeWatch(ctx context.Context, criteria WatchCriteria, re
 
 	for {
 		resp, newBefore, err := g.Get(ctx, Criteria{
-			Name:          criteria.Name,
-			Namespace:     criteria.Namespace,
-			After:         after,
-			LabelSelector: criteria.LabelSelector,
-			Limit:         1000,
-			Before:        before,
+			Name:                  criteria.Name,
+			Namespace:             criteria.Namespace,
+			After:                 after,
+			LabelSelector:         criteria.LabelSelector,
+			Limit:                 1000,
+			Before:                before,
+			ignoreCompactionCheck: true,
 		})
 		if err != nil {
 			return err
@@ -155,6 +382,17 @@ func (g *GormDB) initializeWatch(ctx context.Context, criteria WatchCriteria, re
 	return nil
 }
 
+// validateCriteria should be called while holding the g.compactionLock
+func (g *GormDB) validateCriteria(before, after uint) error {
+	if before != 0 && before < g.compaction {
+		return newCompactionError(before, g.compaction)
+	}
+	if after != 0 && after < g.compaction {
+		return newCompactionError(after, g.compaction)
+	}
+	return nil
+}
+
 func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record, error) {
 	var (
 		lastID     uint
@@ -163,6 +401,13 @@ func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record
 		initialize = make(chan Record)
 		merged     = channel.Concat(initialize, sub.C)
 	)
+
+	// this will be released after the initializeWatch is done
+	g.compactionLock.RLock()
+	if err := g.validateCriteria(0, criteria.After); err != nil {
+		g.compactionLock.RUnlock()
+		return nil, err
+	}
 
 	go func() {
 		defer close(result)
@@ -189,6 +434,7 @@ func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record
 
 	go func() {
 		err := g.initializeWatch(ctx, criteria, initialize)
+		g.compactionLock.RUnlock()
 		close(initialize)
 		if err != nil {
 			logrus.Errorf("error initializing watch for kind %s: %v", g.gvk.Kind, err)
@@ -199,13 +445,27 @@ func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record
 	return result, nil
 }
 
+func (g *GormDB) getMinID(ctx context.Context) (uint, error) {
+	var (
+		records []Record
+		max     = Record{}
+	)
+	db := g.getDB(ctx).WithContext(ctx)
+	result := db.Table(g.tableName).Model(records).Select("id").
+		Where("garbage IS FALSE").
+		Order("id ASC").
+		Limit(1).
+		Scan(&max)
+	return max.ID, result.Error
+}
+
 func (g *GormDB) getMaxID(ctx context.Context) (uint, error) {
 	var (
 		records []Record
 		max     = Record{}
 	)
-	db := g.db.WithContext(ctx)
-	result := db.Table(g.tableName).Model(records).Select("max(id) AS id").
+	db := g.getDB(ctx).WithContext(ctx)
+	result := db.Table(g.tableName).Model(records).Select("id").
 		Order("id DESC").
 		Limit(1).
 		Scan(&max)
@@ -217,7 +477,17 @@ func (g *GormDB) find(ctx context.Context, db *gorm.DB, criteria Criteria) (resu
 	if err != nil {
 		return nil, 0, err
 	}
+	if !criteria.ignoreCompactionCheck {
+		g.compactionLock.RLock()
+		if err := g.validateCriteria(criteria.Before, criteria.After); err != nil {
+			g.compactionLock.RUnlock()
+			return nil, 0, err
+		}
+	}
 	db = db.Find(&result)
+	if !criteria.ignoreCompactionCheck {
+		g.compactionLock.RUnlock()
+	}
 	return result, resourceVersion, db.Error
 }
 
@@ -240,6 +510,9 @@ func (g *GormDB) possibleIDs(ctx context.Context, criteria Criteria) (*gorm.DB, 
 	}
 	if criteria.Name != "" {
 		query.Where("name = ?", criteria.Name)
+	} else {
+		// don't pick up fill or compaction records
+		query.Where("name != ?", "")
 	}
 	if criteria.After != 0 {
 		query.Where("id > ?", criteria.After)
@@ -261,7 +534,7 @@ func (g *GormDB) possibleIDs(ctx context.Context, criteria Criteria) (*gorm.DB, 
 		query.Where("id <= ?", criteria.Before)
 	}
 	if !criteria.IncludeGC {
-		query.Where("garbage IS NULL")
+		query.Where("garbage IS FALSE")
 	}
 
 	return query, criteria.Before, nil
@@ -269,7 +542,7 @@ func (g *GormDB) possibleIDs(ctx context.Context, criteria Criteria) (*gorm.DB, 
 
 func (g *GormDB) newQuery(ctx context.Context) *gorm.DB {
 	var records []Record
-	return g.db.WithContext(ctx).Table(g.tableName).Model(records)
+	return g.getDB(ctx).WithContext(ctx).Table(g.tableName).Model(records)
 }
 
 func (g *GormDB) Get(ctx context.Context, criteria Criteria) ([]Record, uint, error) {
@@ -336,7 +609,36 @@ func (g *GormDB) quote(s string) string {
 	return buf.String()
 }
 
+type dbKey struct{}
+
+func (g *GormDB) getDB(ctx context.Context) *gorm.DB {
+	db, ok := ctx.Value(dbKey{}).(*gorm.DB)
+	if ok {
+		return db
+	}
+	return g.db
+}
+
+func (g *GormDB) Transaction(ctx context.Context, do func(ctx context.Context) error) error {
+	return g.getDB(ctx).Transaction(func(tx *gorm.DB) error {
+		return do(context.WithValue(ctx, dbKey{}, tx))
+	})
+}
+
 func (g *GormDB) Insert(ctx context.Context, rec *Record) error {
 	defer g.triggerWatchLoop()
-	return g.db.WithContext(ctx).Table(g.tableName).Create(rec).Error
+	return g.getDB(ctx).Transaction(func(tx *gorm.DB) error {
+		tx = tx.WithContext(ctx)
+		if rec.Previous != nil {
+			db := tx.Table(g.tableName).Where("id = ?", *rec.Previous).
+				Update("latest", false)
+			if db.Error != nil {
+				return db.Error
+			}
+		}
+		if rec.Name != "" {
+			rec.Latest = true
+		}
+		return tx.Table(g.tableName).Create(rec).Error
+	})
 }
