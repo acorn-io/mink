@@ -84,7 +84,7 @@ func (g *GormDB) readEvents(ctx context.Context, init bool, lastID uint) (uint, 
 
 	for _, record := range records {
 		if record.ID != lastID+1 {
-			g.fill(ctx, lastID)
+			g.fill(ctx, lastID+1)
 			return lastID, nil
 		}
 		if record.Name == "" && record.Namespace != "" {
