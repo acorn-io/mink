@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -73,10 +72,6 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 			tableName = tn.TableName()
 		}
 		if f.AutoMigrate {
-			gdb.Table(tableName).Model(&Record{}).Where("garbage IS NULL").Update("garbage", 0)
-			if err := deleteCorrupted(gdb, tableName); err != nil {
-				logrus.Error(err)
-			}
 			if err := gdb.Table(tableName).AutoMigrate(&Record{}); err != nil {
 				return nil, err
 			}
@@ -87,76 +82,4 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 		return nil, err
 	}
 	return s, nil
-}
-
-func deleteCorrupted(db *gorm.DB, tableName string) error {
-	for {
-		if done, err := deleteCorruptedStep(db, tableName); err != nil {
-			return err
-		} else if done {
-			return nil
-		}
-	}
-}
-
-func deleteCorruptedStep(db *gorm.DB, tableName string) (bool, error) {
-	var result []Record
-
-	resp := db.
-		Table(tableName).
-		Model(&Record{}).
-		Select("max(id) as id, previous, count(previous) as p").
-		Group("previous").
-		Having("p > 1").
-		Scan(&result)
-	if resp.Error != nil {
-		return false, fmt.Errorf("failed to cleanup corrupted data [%s]: %w", tableName, resp.Error)
-	}
-
-	if len(result) == 0 {
-		return true, nil
-	}
-
-	badName := map[string]bool{}
-	for _, record := range result {
-		var badRecord Record
-		resp := db.Table(tableName).
-			Select("namespace", "name", "id", "previous").
-			Model(&Record{}).
-			First(&badRecord, record.ID)
-		if resp.Error != nil {
-			return false, fmt.Errorf("failed to cleanup corrupted data [%s]: %w", tableName, resp.Error)
-		}
-
-		logrus.Warnf("Duplicate previous %d on [%s/%s] %s %d", *badRecord.Previous, badRecord.Namespace,
-			badRecord.Name, badRecord.Kind, record.ID)
-
-		badKey := badRecord.Namespace + "/" + badRecord.Name
-		if !badName[badKey] {
-			logrus.Warnf("Marking %s %s/%s as garbage", tableName, badRecord.Namespace, badRecord.Name)
-			resp = db.
-				Table(tableName).Model(&Record{}).
-				Where("namespace = ? and name = ?", badRecord.Namespace, badRecord.Name).
-				Updates(map[string]any{
-					"removed": time.Now(),
-					"deleted": time.Now(),
-				})
-			if resp.Error != nil {
-				return false, fmt.Errorf("failed to cleanup corrupted data [%s]: %w", tableName, resp.Error)
-			}
-			logrus.Warnf("Marked [%d] %s %s/%s as garbage", resp.RowsAffected, tableName, badRecord.Namespace, badRecord.Name)
-		}
-
-		badName[badKey] = true
-
-		resp = db.
-			Table(tableName).Model(&Record{}).
-			Delete(badRecord, badRecord.ID)
-		if resp.Error != nil {
-			return false, fmt.Errorf("failed to cleanup corrupted data [%s]: %w", tableName, resp.Error)
-		}
-		logrus.Warnf("Deleted %s %s/%s [%d]", tableName, badRecord.Namespace, badRecord.Name, badRecord.ID)
-	}
-
-	return false, nil
 }
