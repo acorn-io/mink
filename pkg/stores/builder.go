@@ -30,6 +30,7 @@ type Builder struct {
 	PrepareForCreator strategy.PrepareForCreator
 	WarningsOnCreator strategy.WarningsOnCreator
 	Validator         strategy.Validator
+	NameValidator     strategy.NameValidator
 }
 
 func NewBuilder(scheme *runtime.Scheme, obj kclient.Object) *Builder {
@@ -64,6 +65,15 @@ func (b Builder) WithGet(get strategy.Getter) *Builder {
 	return &b
 }
 
+func (b Builder) WithCompleteCRUD(complete strategy.CompleteCRUD) *Builder {
+	return b.WithCreate(complete).
+		WithGet(complete).
+		WithList(complete).
+		WithWatch(complete).
+		WithUpdate(complete).
+		WithDelete(complete)
+}
+
 func (b Builder) WithCreate(create strategy.Creater) *Builder {
 	b.Create = create
 	return &b
@@ -91,6 +101,11 @@ func (b Builder) WithValidateUpdate(validate strategy.ValidateUpdater) *Builder 
 
 func (b Builder) WithValidateCreate(validate strategy.Validator) *Builder {
 	b.Validator = validate
+	return &b
+}
+
+func (b Builder) WithValidateName(validate strategy.NameValidator) *Builder {
+	b.NameValidator = validate
 	return &b
 }
 
@@ -272,6 +287,7 @@ func (b Builder) createAdapter() *strategy.CreateAdapter {
 	create.PrepareForCreater = b.PrepareForCreator
 	create.Warner = b.WarningsOnCreator
 	create.Validator = b.Validator
+	create.NameValidator = b.NameValidator
 	return create
 }
 

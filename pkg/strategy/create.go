@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/acorn-io/mink/pkg/types"
+	"github.com/acorn-io/mink/pkg/validator"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -13,6 +14,14 @@ import (
 	"k8s.io/apiserver/pkg/storage/names"
 )
 
+type CompleteCRUD interface {
+	Lister
+	Watcher
+	Creater
+	Updater
+	Deleter
+}
+
 type Creater interface {
 	Create(ctx context.Context, object types.Object) (types.Object, error)
 	New() types.Object
@@ -20,6 +29,10 @@ type Creater interface {
 
 type WarningsOnCreator interface {
 	WarningsOnCreate(ctx context.Context, obj runtime.Object) []string
+}
+
+type NameValidator interface {
+	ValidateName(ctx context.Context, obj runtime.Object) field.ErrorList
 }
 
 type Validator interface {
@@ -50,6 +63,7 @@ type CreateAdapter struct {
 	strategy          Creater
 	Warner            WarningsOnCreator
 	Validator         Validator
+	NameValidator     NameValidator
 	PrepareForCreater PrepareForCreator
 }
 
@@ -104,6 +118,13 @@ func checkNamespace(nsed bool, obj runtime.Object) *field.Error {
 }
 
 func (a *CreateAdapter) Validate(ctx context.Context, obj runtime.Object) (result field.ErrorList) {
+	if a.NameValidator != nil {
+		result = append(result, a.NameValidator.ValidateName(ctx, obj)...)
+	} else if o, ok := a.strategy.(NameValidator); ok {
+		result = append(result, o.ValidateName(ctx, obj)...)
+	} else {
+		result = append(result, validator.ValidDNSLabel.ValidateName(ctx, obj)...)
+	}
 	if err := checkNamespace(a.NamespaceScoped(), obj); err != nil {
 		result = append(result, err)
 	}
