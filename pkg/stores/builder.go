@@ -227,7 +227,7 @@ func (b Builder) Build() rest.Storage {
 			TableAdapter:   b.tableAdapter(),
 		}
 	}
-	if !createSet && getSet && listSet && !updateSet && deleteSet && !watchSet {
+	if !createSet && getSet && listSet && updateSet && deleteSet && !watchSet {
 		return &GetListUpdateDeleteStore{
 			GetAdapter:     b.getAdapter(),
 			ListAdapter:    b.listAdapter(),
