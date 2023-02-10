@@ -257,6 +257,16 @@ func (b Builder) Build() rest.Storage {
 			TableAdapter:   b.tableAdapter(),
 		}
 	}
+	if !createSet && getSet && listSet && !updateSet && !deleteSet && watchSet {
+		return &GetListWatchStore{
+			NewAdapter:     b.newAdapter(),
+			GetAdapter:     b.getAdapter(),
+			ListAdapter:    b.listAdapter(),
+			WatchAdapter:   b.watchAdapter(),
+			DestroyAdapter: b.destroyAdapter(),
+			TableAdapter:   b.tableAdapter(),
+		}
+	}
 	panic(fmt.Sprintf("createSet=%v, getSet=%v, listSet=%v, updateSet=%v, deleteSet=%v, watchSet=%v "+
 		"combination is not currently supported, PRs welcomed!", createSet, getSet, listSet, updateSet, deleteSet,
 		watchSet))
