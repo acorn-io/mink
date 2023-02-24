@@ -189,7 +189,11 @@ func (t *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, 
 		return nil, err
 	}
 	o, err := t.strategy.Delete(ctx, newObj)
-	return t.toPublic(ctx, o, err, obj.GetNamespace(), obj.GetName())
+	deletedObj, err := t.toPublic(ctx, o, err, obj.GetNamespace(), obj.GetName())
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	return deletedObj, err
 }
 
 func (t *Strategy) translateListOpts(ctx context.Context, namespace string, opts storage.ListOptions) (string, storage.ListOptions, error) {
