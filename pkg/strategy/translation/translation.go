@@ -26,16 +26,18 @@ type Translator interface {
 	NewPublicList() types.ObjectList
 }
 
-func NewTranslationStrategy(translator Translator, strategy strategy.CompleteStrategy) *Strategy {
+func NewTranslationStrategy(translator Translator, strategy strategy.CompleteStrategy, pubGVK schema.GroupVersionKind) *Strategy {
 	return &Strategy{
 		strategy:   strategy,
 		translator: translator,
+		pubGVK:     pubGVK,
 	}
 }
 
 type Strategy struct {
 	strategy   strategy.CompleteStrategy
 	translator Translator
+	pubGVK     schema.GroupVersionKind
 }
 
 func (t *Strategy) toPublicObjects(ctx context.Context, objs ...runtime.Object) ([]types.Object, error) {
@@ -50,8 +52,11 @@ func (t *Strategy) toPublicObjects(ctx context.Context, objs ...runtime.Object) 
 	}
 	for _, obj := range result {
 		if uids[obj.GetUID()] {
-			obj.SetUID(ktypes.UID(obj.GetUID() + "-p"))
+			obj.SetUID(obj.GetUID() + "-p")
 		}
+
+		// Reset the GVK to the public GVK
+		obj.GetObjectKind().SetGroupVersionKind(t.pubGVK)
 	}
 
 	return result, nil
