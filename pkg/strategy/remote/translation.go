@@ -31,7 +31,7 @@ func getList(obj kclient.Object, watch kclient.WithWatch) kclient.ObjectList {
 
 func NewWithTranslation(translator translation.Translator, obj kclient.Object, kclient kclient.WithWatch) strategy.CompleteStrategy {
 	remote := NewRemote(obj, getList(obj, kclient), kclient)
-	return translation.NewTranslationStrategy(translator, remote, getGVK(obj, kclient))
+	return translation.NewTranslationStrategy(translator, remote, getGVK(translator.NewPublic(), kclient))
 }
 
 func getGVK(obj kclient.Object, watch kclient.WithWatch) schema.GroupVersionKind {
