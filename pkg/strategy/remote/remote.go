@@ -6,6 +6,7 @@ import (
 	"github.com/acorn-io/mink/pkg/strategy"
 	"github.com/acorn-io/mink/pkg/types"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
 	kclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,10 +20,10 @@ type Remote struct {
 	c       kclient.WithWatch
 }
 
-func NewRemote(obj types.Object, objList types.ObjectList, c kclient.WithWatch) *Remote {
+func NewRemote(obj types.Object, c kclient.WithWatch) *Remote {
 	return &Remote{
 		obj:     obj,
-		objList: objList,
+		objList: types.MustGetListType(obj, c.Scheme()),
 		c:       c,
 	}
 }
@@ -83,4 +84,8 @@ func (r *Remote) Watch(ctx context.Context, namespace string, opts storage.ListO
 }
 
 func (r *Remote) Destroy() {
+}
+
+func (r *Remote) Scheme() *runtime.Scheme {
+	return r.c.Scheme()
 }

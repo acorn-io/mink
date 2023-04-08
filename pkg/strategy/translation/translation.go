@@ -26,11 +26,11 @@ type Translator interface {
 	NewPublicList() types.ObjectList
 }
 
-func NewTranslationStrategy(translator Translator, strategy strategy.CompleteStrategy, pubGVK schema.GroupVersionKind) *Strategy {
+func NewTranslationStrategy(translator Translator, strategy strategy.CompleteStrategy) *Strategy {
 	return &Strategy{
 		strategy:   strategy,
 		translator: translator,
-		pubGVK:     pubGVK,
+		pubGVK:     types.MustGetGVK(translator.NewPublic(), strategy.Scheme()),
 	}
 }
 
@@ -283,4 +283,8 @@ func (t *Strategy) Watch(ctx context.Context, namespace string, opts storage.Lis
 
 func (t *Strategy) Destroy() {
 	t.strategy.Destroy()
+}
+
+func (t *Strategy) Scheme() *runtime.Scheme {
+	return t.strategy.Scheme()
 }

@@ -1,5 +1,7 @@
 package strategy
 
+import "k8s.io/apimachinery/pkg/runtime"
+
 type CompleteStrategy interface {
 	Creater
 	Updater
@@ -10,4 +12,5 @@ type CompleteStrategy interface {
 	Watcher
 
 	Destroy()
+	Scheme() *runtime.Scheme
 }

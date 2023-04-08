@@ -3,9 +3,12 @@ package translation
 import (
 	"context"
 
+	"github.com/acorn-io/mink/pkg/strategy"
 	mtypes "github.com/acorn-io/mink/pkg/types"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/storage"
+	kclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 type SimpleTranslator interface {
@@ -13,10 +16,28 @@ type SimpleTranslator interface {
 	ToPublic(obj mtypes.Object) mtypes.Object
 }
 
-func NewSimpleTranslator(translator SimpleTranslator, pubType mtypes.Object, pubTypeList mtypes.ObjectList) Translator {
+func getListType(obj kclient.Object, scheme *runtime.Scheme) kclient.ObjectList {
+	gvk, err := apiutil.GVKForObject(obj, scheme)
+	if err != nil {
+		panic(err)
+	}
+	gvk.Kind += "List"
+	objList, err := scheme.New(gvk)
+	if err != nil {
+		panic(err)
+	}
+	return objList.(kclient.ObjectList)
+}
+
+func NewSimpleTranslationStrategy(translator SimpleTranslator, strategy strategy.CompleteStrategy) strategy.CompleteStrategy {
+	pubType := translator.ToPublic(strategy.New())
+	return NewTranslationStrategy(NewSimpleTranslator(translator, pubType, strategy.Scheme()), strategy)
+}
+
+func NewSimpleTranslator(translator SimpleTranslator, pubType mtypes.Object, scheme *runtime.Scheme) Translator {
 	return &simpleTranslator{
 		obj:        pubType,
-		objList:    pubTypeList,
+		objList:    getListType(pubType, scheme),
 		translator: translator,
 	}
 }
