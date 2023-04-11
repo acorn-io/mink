@@ -551,6 +551,10 @@ func (s *Strategy) objectToRecord(obj types.Object) (*Record, error) {
 	}, nil
 }
 
+func (s *Strategy) Scheme() *runtime.Scheme {
+	return s.scheme
+}
+
 func toMap(obj interface{}) (map[string]interface{}, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
