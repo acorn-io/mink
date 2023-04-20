@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"log"
 	"os"
 	"strings"
@@ -17,19 +18,37 @@ import (
 )
 
 type Factory struct {
-	db          gorm.Dialector
-	schema      *runtime.Scheme
-	AutoMigrate bool
+	db               gorm.Dialector
+	schema           *runtime.Scheme
+	migrationTimeout time.Duration
+	AutoMigrate      bool
 }
 
-func NewFactory(schema *runtime.Scheme, dsn string) *Factory {
-	dsn = strings.TrimPrefix(dsn, "mysql://")
-	db := mysql.Open(dsn)
-	return &Factory{
+type FactoryOption func(*Factory)
+
+// WithMigrationTimeout sets a timeout for the initial database migration if auto migration is enabled.
+func WithMigrationTimeout(timeout time.Duration) FactoryOption {
+	return func(f *Factory) {
+		f.migrationTimeout = timeout
+	}
+}
+
+func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) *Factory {
+	f := &Factory{
 		AutoMigrate: true,
 		schema:      schema,
-		db:          db,
 	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(f)
+		}
+	}
+
+	dsn = strings.TrimPrefix(dsn, "mysql://")
+	f.db = mysql.Open(dsn)
+
+	return f
 }
 
 func (f *Factory) Scheme() *runtime.Scheme {
@@ -72,7 +91,15 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 			tableName = tn.TableName()
 		}
 		if f.AutoMigrate {
-			if err := gdb.Table(tableName).AutoMigrate(&Record{}); err != nil {
+			ctx := context.Background()
+			if f.migrationTimeout != 0 {
+				// If configured, set a timeout for the migration
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, f.migrationTimeout)
+				defer cancel()
+			}
+
+			if err := gdb.WithContext(ctx).Table(tableName).AutoMigrate(&Record{}); err != nil {
 				return nil, err
 			}
 		}
