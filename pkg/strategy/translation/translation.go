@@ -13,6 +13,7 @@ import (
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 var _ strategy.CompleteStrategy = (*Strategy)(nil)
@@ -64,8 +65,21 @@ func (t *Strategy) toPublicObjects(ctx context.Context, objs ...runtime.Object) 
 
 func (t *Strategy) toPublic(ctx context.Context, obj runtime.Object, err error, namespace, name string) (types.Object, error) {
 	if err != nil {
+		// if err is a not found error, translate its Kind back to the public version
+		if apierrors.IsNotFound(err) {
+			gvk, err := apiutil.GVKForObject(t.translator.NewPublic(), t.strategy.Scheme())
+			if err != nil {
+				return nil, err
+			}
+
+			return nil, apierrors.NewNotFound(schema.GroupResource{
+				Group:    gvk.Group,
+				Resource: gvk.Kind,
+			}, name)
+		}
 		return nil, err
 	}
+
 	objs, err := t.toPublicObjects(ctx, obj)
 	if err != nil {
 		return nil, err
