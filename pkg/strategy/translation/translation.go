@@ -6,6 +6,7 @@ import (
 
 	"github.com/acorn-io/mink/pkg/strategy"
 	"github.com/acorn-io/mink/pkg/types"
+	wname "github.com/rancher/wrangler/pkg/name"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -74,7 +75,7 @@ func (t *Strategy) toPublic(ctx context.Context, obj runtime.Object, err error, 
 
 			return nil, apierrors.NewNotFound(schema.GroupResource{
 				Group:    gvk.Group,
-				Resource: gvk.Kind,
+				Resource: strings.ToLower(wname.GuessPluralName(gvk.Kind)),
 			}, name)
 		}
 		return nil, err
