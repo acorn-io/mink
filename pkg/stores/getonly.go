@@ -11,6 +11,7 @@ var (
 )
 
 type GetOnlyStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.GetAdapter
 	*strategy.NewAdapter
 	*strategy.DestroyAdapter

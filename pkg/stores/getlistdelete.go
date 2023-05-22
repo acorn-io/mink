@@ -13,6 +13,7 @@ var (
 )
 
 type GetListDeleteStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.GetAdapter
 	*strategy.ListAdapter
 	*strategy.DeleteAdapter

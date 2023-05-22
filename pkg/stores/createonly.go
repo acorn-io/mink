@@ -11,6 +11,7 @@ var (
 )
 
 type CreateOnlyStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.CreateAdapter
 	*strategy.DestroyAdapter
 	*strategy.TableAdapter

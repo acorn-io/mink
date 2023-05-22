@@ -16,6 +16,7 @@ var (
 )
 
 type ReadWriteWatchStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.CreateAdapter
 	*strategy.GetAdapter
 	*strategy.ListAdapter

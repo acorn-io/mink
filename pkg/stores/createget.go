@@ -12,6 +12,7 @@ var (
 )
 
 type CreateGetStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.CreateAdapter
 	*strategy.GetAdapter
 	*strategy.DestroyAdapter

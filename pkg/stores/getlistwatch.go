@@ -13,6 +13,7 @@ var (
 )
 
 type GetListWatchStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.NewAdapter
 	*strategy.GetAdapter
 	*strategy.ListAdapter

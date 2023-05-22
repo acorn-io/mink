@@ -80,6 +80,10 @@ func (a *CreateAdapter) Create(ctx context.Context, obj runtime.Object, createVa
 				objectMeta.SetName(requestInfo.Name)
 			}
 		}
+
+		if len(objectMeta.GetGenerateName()) > 0 && len(objectMeta.GetName()) == 0 {
+			objectMeta.SetName(a.GenerateName(objectMeta.GetGenerateName()))
+		}
 	} else {
 		return nil, err
 	}

@@ -15,6 +15,7 @@ var (
 )
 
 type CreateGetListDeleteUpdateStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.GetAdapter
 	*strategy.CreateAdapter
 	*strategy.ListAdapter

@@ -6,4 +6,5 @@ type Base interface {
 	rest.Storage
 	rest.Scoper
 	rest.TableConvertor
+	rest.SingularNameProvider
 }

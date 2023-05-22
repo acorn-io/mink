@@ -11,6 +11,7 @@ var (
 )
 
 type ListOnlyStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.ListAdapter
 	*strategy.DestroyAdapter
 	*strategy.NewAdapter

@@ -15,6 +15,7 @@ import (
 	"k8s.io/apiserver/pkg/authentication/request/anonymous"
 	"k8s.io/apiserver/pkg/authentication/request/union"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
+	"k8s.io/apiserver/pkg/endpoints/openapi"
 	"k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/filters"
 	"k8s.io/apiserver/pkg/server/options"
@@ -30,18 +31,23 @@ type Server struct {
 }
 
 type Config struct {
-	Authenticator        authenticator.Request
-	Authorization        authorizer.Authorizer
-	HTTPListenPort       int
-	HTTPSListenPort      int
-	LongRunningVerbs     []string
-	LongRunningResources []string
-	OpenAPIConfig        *openapicommon.Config
-	Scheme               *runtime.Scheme
-	CodecFactory         *serializer.CodecFactory
-	APIGroups            []*server.APIGroupInfo
-	Middleware           []func(http.Handler) http.Handler
-	PostStartFunc        server.PostStartHookFunc
+	Name                  string
+	Version               string
+	Authenticator         authenticator.Request
+	Authorization         authorizer.Authorizer
+	HTTPListenPort        int
+	HTTPSListenPort       int
+	LongRunningVerbs      []string
+	LongRunningResources  []string
+	OpenAPIConfig         openapicommon.GetOpenAPIDefinitions
+	Scheme                *runtime.Scheme
+	CodecFactory          *serializer.CodecFactory
+	APIGroups             []*server.APIGroupInfo
+	Middleware            []func(http.Handler) http.Handler
+	PostStartFunc         server.PostStartHookFunc
+	SupportAPIAggregation bool
+	DefaultOptions        *options.RecommendedOptions
+	IgnoreStartFailure    bool
 }
 
 func (c *Config) complete() {
@@ -61,11 +67,15 @@ func (c *Config) complete() {
 		codec := serializer.NewCodecFactory(c.Scheme)
 		c.CodecFactory = &codec
 	}
+	if c.Name == "" {
+		c.Name = "mink"
+	}
+	if c.DefaultOptions == nil {
+		c.DefaultOptions = DefaultOpts()
+	}
 }
 
-func New(config *Config) (*Server, error) {
-	config.complete()
-
+func DefaultOpts() *options.RecommendedOptions {
 	opts := options.NewRecommendedOptions("", nil)
 	opts.Audit = nil
 	opts.Etcd = nil
@@ -73,16 +83,28 @@ func New(config *Config) (*Server, error) {
 	opts.Authorization = nil
 	opts.Features = nil
 	opts.Admission = nil
+	return opts
+}
+
+func New(config *Config) (*Server, error) {
+	config.complete()
+
+	opts := config.DefaultOptions
 	opts.SecureServing.BindPort = config.HTTPSListenPort
-	opts.Authentication.SkipInClusterLookup = true
-	opts.Authentication.RemoteKubeConfigFileOptional = true
+	opts.Authentication.SkipInClusterLookup = !config.SupportAPIAggregation
+	opts.Authentication.RemoteKubeConfigFileOptional = !config.SupportAPIAggregation
 
 	if err := opts.SecureServing.MaybeDefaultWithSelfSignedCerts("localhost", nil, []net.IP{netutils.ParseIPSloppy("127.0.0.1")}); err != nil {
 		return nil, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
 	serverConfig := server.NewRecommendedConfig(*config.CodecFactory)
-	serverConfig.OpenAPIConfig = config.OpenAPIConfig
+	serverConfig.OpenAPIConfig = server.DefaultOpenAPIConfig(config.OpenAPIConfig, openapi.NewDefinitionNamer(config.Scheme))
+	serverConfig.OpenAPIConfig.Info.Title = config.Name
+	serverConfig.OpenAPIConfig.Info.Version = config.Version
+	serverConfig.OpenAPIV3Config = server.DefaultOpenAPIV3Config(config.OpenAPIConfig, openapi.NewDefinitionNamer(config.Scheme))
+	serverConfig.OpenAPIV3Config.Info.Title = config.Name
+	serverConfig.OpenAPIV3Config.Info.Version = config.Version
 	serverConfig.LongRunningFunc = filters.BasicLongRunningRequestCheck(
 		sets.NewString(config.LongRunningVerbs...),
 		sets.NewString(config.LongRunningResources...),
@@ -96,15 +118,15 @@ func New(config *Config) (*Server, error) {
 		return nil, err
 	}
 
-	if config.Authenticator == nil {
-		serverConfig.Authentication.Authenticator = anonymous.NewAuthenticator()
-	} else {
+	if config.Authenticator != nil {
 		serverConfig.Authentication.Authenticator = union.New(config.Authenticator, anonymous.NewAuthenticator())
 	}
-	serverConfig.Authorization.Authorizer = config.Authorization
+	if config.Authorization != nil {
+		serverConfig.Authorization.Authorizer = config.Authorization
+	}
 
 	if config.PostStartFunc != nil {
-		serverConfig.AddPostStartHookOrDie("mink", func(context server.PostStartHookContext) error {
+		serverConfig.AddPostStartHookOrDie(config.Name, func(context server.PostStartHookContext) error {
 			err := config.PostStartFunc(context)
 			if err != nil {
 				logrus.Fatal("failed to run post startup hook", err)
@@ -113,7 +135,7 @@ func New(config *Config) (*Server, error) {
 		})
 	}
 
-	server, err := serverConfig.Complete().New("mink", server.NewEmptyDelegate())
+	server, err := serverConfig.Complete().New(config.Name, server.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
 	}
@@ -141,12 +163,17 @@ func New(config *Config) (*Server, error) {
 		GenericAPIServer: server,
 	}, nil
 }
+
 func (s *Server) Run(ctx context.Context) error {
 	readyServer := s.GenericAPIServer.PrepareRun()
 	go func() {
 		err := readyServer.Run(ctx.Done())
 		if err != nil {
-			logrus.Fatal("Failed to run api server: %v", err)
+			if s.config.IgnoreStartFailure {
+				logrus.Errorf("Failed to run api server: %v", err)
+			} else {
+				logrus.Fatalf("Failed to run api server: %v", err)
+			}
 		}
 	}()
 
@@ -165,7 +192,11 @@ func (s *Server) Run(ctx context.Context) error {
 	go func() {
 		logrus.Infof("Listening on %s", address)
 		if err := httpServer.ListenAndServe(); err != nil {
-			logrus.Fatal("Failed to run http api server: %v", err)
+			if s.config.IgnoreStartFailure {
+				logrus.Errorf("Failed to run http api server: %v", err)
+			} else {
+				logrus.Fatalf("Failed to run http api server: %v", err)
+			}
 		}
 	}()
 

@@ -15,6 +15,7 @@ var (
 )
 
 type GetListUpdateDeleteWatchStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.GetAdapter
 	*strategy.UpdateAdapter
 	*strategy.ListAdapter

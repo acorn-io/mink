@@ -12,6 +12,7 @@ var (
 )
 
 type GetListStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.GetAdapter
 	*strategy.ListAdapter
 	*strategy.DestroyAdapter

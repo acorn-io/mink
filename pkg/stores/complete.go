@@ -16,6 +16,7 @@ func NewComplete(scheme *runtime.Scheme, s strategy.CompleteStrategy) rest.Stora
 }
 
 type Complete struct {
+	*strategy.SingularNameAdapter
 	*strategy.CreateAdapter
 	*strategy.UpdateAdapter
 	*strategy.GetAdapter
@@ -36,12 +37,13 @@ func (c *Complete) Destroy() {
 
 func newComplete(scheme *runtime.Scheme, s strategy.CompleteStrategy) (*Complete, *strategy.Status) {
 	return &Complete{
-		CreateAdapter: strategy.NewCreate(scheme, s),
-		UpdateAdapter: strategy.NewUpdate(scheme, s),
-		GetAdapter:    strategy.NewGet(s),
-		ListAdapter:   strategy.NewList(s),
-		DeleteAdapter: strategy.NewDelete(scheme, s),
-		WatchAdapter:  strategy.NewWatch(s),
-		strategy:      s,
+		SingularNameAdapter: strategy.NewSingularNameAdapter(s.New(), scheme),
+		CreateAdapter:       strategy.NewCreate(scheme, s),
+		UpdateAdapter:       strategy.NewUpdate(scheme, s),
+		GetAdapter:          strategy.NewGet(s),
+		ListAdapter:         strategy.NewList(s),
+		DeleteAdapter:       strategy.NewDelete(scheme, s),
+		WatchAdapter:        strategy.NewWatch(s),
+		strategy:            s,
 	}, strategy.NewStatus(scheme, s)
 }

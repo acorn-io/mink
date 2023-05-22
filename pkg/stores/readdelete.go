@@ -14,6 +14,7 @@ var (
 )
 
 type ReadDeleteStore struct {
+	*strategy.SingularNameAdapter
 	*strategy.GetAdapter
 	*strategy.ListAdapter
 	*strategy.WatchAdapter

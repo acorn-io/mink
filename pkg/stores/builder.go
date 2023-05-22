@@ -136,146 +136,161 @@ func (b Builder) Build() rest.Storage {
 
 	if createSet && getSet && !listSet && !updateSet && !deleteSet && !watchSet {
 		return &CreateGetStore{
-			CreateAdapter:  b.createAdapter(),
-			GetAdapter:     b.getAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			CreateAdapter:       b.createAdapter(),
+			GetAdapter:          b.getAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if createSet && getSet && listSet && !updateSet && deleteSet && !watchSet {
 		return &CreateGetListDeleteStore{
-			GetAdapter:     b.getAdapter(),
-			CreateAdapter:  b.createAdapter(),
-			ListAdapter:    b.listAdapter(),
-			DeleteAdapter:  b.deleteAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			GetAdapter:          b.getAdapter(),
+			CreateAdapter:       b.createAdapter(),
+			ListAdapter:         b.listAdapter(),
+			DeleteAdapter:       b.deleteAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if createSet && !getSet && !listSet && !updateSet && !deleteSet && !watchSet {
 		return &CreateOnlyStore{
-			CreateAdapter:  b.createAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			CreateAdapter:       b.createAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if !createSet && getSet && listSet && !updateSet && !deleteSet && !watchSet {
 		return &GetListStore{
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			NewAdapter:     b.newAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			NewAdapter:          b.newAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if !createSet && getSet && listSet && !updateSet && deleteSet && !watchSet {
 		return &GetListDeleteStore{
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			DeleteAdapter:  b.deleteAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			NewAdapter:     b.newAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			DeleteAdapter:       b.deleteAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			NewAdapter:          b.newAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if !createSet && getSet && !listSet && !updateSet && !deleteSet && !watchSet {
 		return &GetOnlyStore{
-			GetAdapter:     b.getAdapter(),
-			NewAdapter:     b.newAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			ScoperAdapter:  b.scoperAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			GetAdapter:          b.getAdapter(),
+			NewAdapter:          b.newAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			ScoperAdapter:       b.scoperAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if !createSet && !getSet && listSet && !updateSet && !deleteSet && !watchSet {
 		return &ListOnlyStore{
-			ListAdapter:    b.listAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			NewAdapter:     b.newAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			ListAdapter:         b.listAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			NewAdapter:          b.newAdapter(),
 		}
 	}
 	if !createSet && getSet && listSet && !updateSet && deleteSet && watchSet {
 		return &ReadDeleteStore{
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			WatchAdapter:   b.watchAdapter(),
-			DeleteAdapter:  b.deleteAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			NewAdapter:     b.newAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			WatchAdapter:        b.watchAdapter(),
+			DeleteAdapter:       b.deleteAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			NewAdapter:          b.newAdapter(),
 		}
 	}
 	if createSet && getSet && listSet && updateSet && deleteSet && watchSet {
 		return &ReadWriteWatchStore{
-			CreateAdapter:  b.createAdapter(),
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			UpdateAdapter:  b.updateAdapter(),
-			DeleteAdapter:  b.deleteAdapter(),
-			WatchAdapter:   b.watchAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			CreateAdapter:       b.createAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			UpdateAdapter:       b.updateAdapter(),
+			DeleteAdapter:       b.deleteAdapter(),
+			WatchAdapter:        b.watchAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if createSet && getSet && listSet && !updateSet && deleteSet && watchSet {
 		return &CreateGetListDeleteWatchStore{
-			CreateAdapter:  b.createAdapter(),
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			DeleteAdapter:  b.deleteAdapter(),
-			WatchAdapter:   b.watchAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			CreateAdapter:       b.createAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			DeleteAdapter:       b.deleteAdapter(),
+			WatchAdapter:        b.watchAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if createSet && getSet && listSet && updateSet && deleteSet && !watchSet {
 		return &CreateGetListDeleteUpdateStore{
-			CreateAdapter:  b.createAdapter(),
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			DeleteAdapter:  b.deleteAdapter(),
-			UpdateAdapter:  b.updateAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			CreateAdapter:       b.createAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			DeleteAdapter:       b.deleteAdapter(),
+			UpdateAdapter:       b.updateAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if !createSet && getSet && listSet && updateSet && deleteSet && !watchSet {
 		return &GetListUpdateDeleteStore{
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			UpdateAdapter:  b.updateAdapter(),
-			DeleteAdapter:  b.deleteAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			UpdateAdapter:       b.updateAdapter(),
+			DeleteAdapter:       b.deleteAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if !createSet && getSet && listSet && updateSet && deleteSet && watchSet {
 		return &GetListUpdateDeleteWatchStore{
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			UpdateAdapter:  b.updateAdapter(),
-			DeleteAdapter:  b.deleteAdapter(),
-			WatchAdapter:   b.watchAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			UpdateAdapter:       b.updateAdapter(),
+			DeleteAdapter:       b.deleteAdapter(),
+			WatchAdapter:        b.watchAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if !createSet && !getSet && listSet && !updateSet && !deleteSet && watchSet {
 		return &ListWatchStore{
-			NewAdapter:     b.newAdapter(),
-			ListAdapter:    b.listAdapter(),
-			WatchAdapter:   b.watchAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			NewAdapter:          b.newAdapter(),
+			ListAdapter:         b.listAdapter(),
+			WatchAdapter:        b.watchAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	if !createSet && getSet && listSet && !updateSet && !deleteSet && watchSet {
 		return &GetListWatchStore{
-			NewAdapter:     b.newAdapter(),
-			GetAdapter:     b.getAdapter(),
-			ListAdapter:    b.listAdapter(),
-			WatchAdapter:   b.watchAdapter(),
-			DestroyAdapter: b.destroyAdapter(),
-			TableAdapter:   b.tableAdapter(),
+			SingularNameAdapter: b.getSingularNameAdapter(),
+			NewAdapter:          b.newAdapter(),
+			GetAdapter:          b.getAdapter(),
+			ListAdapter:         b.listAdapter(),
+			WatchAdapter:        b.watchAdapter(),
+			DestroyAdapter:      b.destroyAdapter(),
+			TableAdapter:        b.tableAdapter(),
 		}
 	}
 	panic(fmt.Sprintf("createSet=%v, getSet=%v, listSet=%v, updateSet=%v, deleteSet=%v, watchSet=%v "+
@@ -321,6 +336,10 @@ func (b Builder) updateAdapter() *strategy.UpdateAdapter {
 		update.CreateAdapter = b.createAdapter()
 	}
 	return update
+}
+
+func (b Builder) getSingularNameAdapter() *strategy.SingularNameAdapter {
+	return strategy.NewSingularNameAdapter(b.obj, b.scheme)
 }
 
 func (b Builder) getAdapter() *strategy.GetAdapter {
