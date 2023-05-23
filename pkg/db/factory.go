@@ -18,7 +18,7 @@ import (
 )
 
 type Factory struct {
-	db               gorm.Dialector
+	db               *gorm.DB
 	schema           *runtime.Scheme
 	migrationTimeout time.Duration
 	AutoMigrate      bool
@@ -33,7 +33,11 @@ func WithMigrationTimeout(timeout time.Duration) FactoryOption {
 	}
 }
 
-func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) *Factory {
+func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Factory, error) {
+	level := logger.Warn
+	if logrus.IsLevelEnabled(logrus.TraceLevel) {
+		level = logger.Info
+	}
 	f := &Factory{
 		AutoMigrate: true,
 		schema:      schema,
@@ -46,9 +50,29 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) *Fact
 	}
 
 	dsn = strings.TrimPrefix(dsn, "mysql://")
-	f.db = mysql.Open(dsn)
+	gdb := mysql.Open(dsn)
+	db, err := gorm.Open(gdb, &gorm.Config{
+		SkipDefaultTransaction: true,
+		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  level,
+			IgnoreRecordNotFoundError: false,
+			Colorful:                  true,
+		}),
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	return f
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetConnMaxLifetime(time.Minute * 3)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetMaxOpenConns(5)
+	f.db = db
+	return f, nil
 }
 
 func (f *Factory) Scheme() *runtime.Scheme {
@@ -66,26 +90,9 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 	}
 
 	var (
-		gdb       *gorm.DB
 		tableName string
 	)
 	if f.db != nil {
-		level := logger.Warn
-		if logrus.IsLevelEnabled(logrus.TraceLevel) {
-			level = logger.Info
-		}
-		gdb, err = gorm.Open(f.db, &gorm.Config{
-			SkipDefaultTransaction: true,
-			Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
-				SlowThreshold:             200 * time.Millisecond,
-				LogLevel:                  level,
-				IgnoreRecordNotFoundError: false,
-				Colorful:                  true,
-			}),
-		})
-		if err != nil {
-			return nil, err
-		}
 		tableName = strings.ToLower(gvk.Kind)
 		if tn, ok := obj.(TableNamer); ok {
 			tableName = tn.TableName()
@@ -99,12 +106,12 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 				defer cancel()
 			}
 
-			if err := gdb.WithContext(ctx).Table(tableName).AutoMigrate(&Record{}); err != nil {
+			if err := f.db.WithContext(ctx).Table(tableName).AutoMigrate(&Record{}); err != nil {
 				return nil, err
 			}
 		}
 	}
-	s, err := NewStrategy(f.schema, obj, tableName, gdb)
+	s, err := NewStrategy(f.schema, obj, tableName, f.db)
 	if err != nil {
 		return nil, err
 	}
