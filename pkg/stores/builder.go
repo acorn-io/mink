@@ -31,6 +31,8 @@ type Builder struct {
 	WarningsOnCreator strategy.WarningsOnCreator
 	Validator         strategy.Validator
 	NameValidator     strategy.NameValidator
+
+	ValidateDeleter strategy.ValidateDeleter
 }
 
 func NewBuilder(scheme *runtime.Scheme, obj kclient.Object) *Builder {
@@ -101,6 +103,11 @@ func (b Builder) WithValidateUpdate(validate strategy.ValidateUpdater) *Builder 
 
 func (b Builder) WithValidateCreate(validate strategy.Validator) *Builder {
 	b.Validator = validate
+	return &b
+}
+
+func (b Builder) WithValidateDelete(validate strategy.ValidateDeleter) *Builder {
+	b.ValidateDeleter = validate
 	return &b
 }
 
@@ -359,5 +366,7 @@ func (b Builder) listAdapter() *strategy.ListAdapter {
 }
 
 func (b Builder) deleteAdapter() *strategy.DeleteAdapter {
-	return strategy.NewDelete(b.scheme, b.Delete)
+	deleter := strategy.NewDelete(b.scheme, b.Delete)
+	deleter.ValidateDeleter = b.ValidateDeleter
+	return deleter
 }
