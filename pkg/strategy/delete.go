@@ -12,6 +12,10 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 )
 
+type ValidateDeleter interface {
+	ValidateDelete(ctx context.Context, obj runtime.Object) error
+}
+
 type Deleter interface {
 	Getter
 
@@ -28,8 +32,9 @@ func NewDelete(scheme *runtime.Scheme, strategy Deleter) *DeleteAdapter {
 }
 
 type DeleteAdapter struct {
-	scheme   *runtime.Scheme
-	strategy Deleter
+	scheme          *runtime.Scheme
+	strategy        Deleter
+	ValidateDeleter ValidateDeleter
 }
 
 func (a *DeleteAdapter) ObjectKinds(obj runtime.Object) ([]schema.GroupVersionKind, bool, error) {
@@ -75,6 +80,12 @@ func (a *DeleteAdapter) Delete(ctx context.Context, name string, deleteValidatio
 	tObj := obj.(types.Object)
 	if !tObj.GetDeletionTimestamp().IsZero() {
 		return tObj, false, nil
+	}
+
+	if a.ValidateDeleter != nil {
+		if err = a.ValidateDeleter.ValidateDelete(ctx, tObj); err != nil {
+			return nil, false, err
+		}
 	}
 
 	now := metav1.Now()
