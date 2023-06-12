@@ -6,7 +6,6 @@ import (
 
 	"github.com/acorn-io/mink/pkg/strategy"
 	"github.com/acorn-io/mink/pkg/types"
-	wname "github.com/rancher/wrangler/pkg/name"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -75,7 +74,7 @@ func (t *Strategy) toPublic(ctx context.Context, obj runtime.Object, err error, 
 
 			return nil, apierrors.NewNotFound(schema.GroupResource{
 				Group:    gvk.Group,
-				Resource: strings.ToLower(wname.GuessPluralName(gvk.Kind)),
+				Resource: strings.ToLower(guessPluralName(gvk.Kind)),
 			}, name)
 		}
 		return nil, err
@@ -302,4 +301,32 @@ func (t *Strategy) Destroy() {
 
 func (t *Strategy) Scheme() *runtime.Scheme {
 	return t.strategy.Scheme()
+}
+
+func guessPluralName(name string) string {
+	if name == "" {
+		return name
+	}
+
+	if strings.EqualFold(name, "Endpoints") {
+		return name
+	}
+
+	if suffix(name, "s") || suffix(name, "ch") || suffix(name, "x") || suffix(name, "sh") {
+		return name + "es"
+	}
+
+	if suffix(name, "f") || suffix(name, "fe") {
+		return name + "ves"
+	}
+
+	if suffix(name, "y") && len(name) > 2 && !strings.ContainsAny(name[len(name)-2:len(name)-1], "[aeiou]") {
+		return name[0:len(name)-1] + "ies"
+	}
+
+	return name + "s"
+}
+
+func suffix(str, end string) bool {
+	return strings.HasSuffix(str, end)
 }

@@ -3,7 +3,6 @@ module github.com/acorn-io/mink
 go 1.18
 
 require (
-	github.com/rancher/wrangler v1.0.2
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.1
 	gorm.io/datatypes v1.0.7
