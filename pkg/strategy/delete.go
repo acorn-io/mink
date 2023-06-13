@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/acorn-io/mink/pkg/types"
+	apierror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -13,7 +14,7 @@ import (
 )
 
 type ValidateDeleter interface {
-	ValidateDelete(ctx context.Context, obj runtime.Object) error
+	ValidateDelete(ctx context.Context, obj runtime.Object) *apierror.StatusError
 }
 
 type Deleter interface {
@@ -83,7 +84,7 @@ func (a *DeleteAdapter) Delete(ctx context.Context, name string, deleteValidatio
 	}
 
 	if a.ValidateDeleter != nil {
-		if err = a.ValidateDeleter.ValidateDelete(ctx, tObj); err != nil {
+		if err := a.ValidateDeleter.ValidateDelete(ctx, tObj); err != nil {
 			return nil, false, err
 		}
 	}
