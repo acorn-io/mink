@@ -215,6 +215,7 @@ func (s *Strategy) List(ctx context.Context, namespace string, opts storage.List
 
 	list.SetResourceVersion(result.ResourceVersion)
 	list.SetContinue(result.Continue)
+	list.SetRemainingItemCount(result.RemainingCount)
 	return list, meta.SetList(list, result.Items)
 }
 
@@ -222,10 +223,15 @@ type listResult struct {
 	Items           []runtime.Object
 	Continue        string
 	ResourceVersion string
+	RemainingCount  *int64
 }
 
 func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.ListOptions) (*listResult, error) {
 	result := &listResult{}
+
+	if opts.Predicate.Limit != 0 {
+		opts.Predicate.Limit += 1
+	}
 
 	criteria := Criteria{
 		Namespace:     namespace,
@@ -244,11 +250,9 @@ func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.Lis
 			return nil, err
 		}
 		criteria.After = cont.ID
+		criteria.ignoreCompactionCheck = criteria.After != 0
 	}
 
-	if opts.Predicate.Limit != 0 {
-		opts.Predicate.Limit += 1
-	}
 	records, resourceVersionInt, err := s.db.Get(ctx, criteria)
 	if err != nil {
 		return nil, err
@@ -277,6 +281,7 @@ func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.Lis
 		}
 		objs = objs[0 : len(objs)-1]
 		result.Continue = base64.StdEncoding.EncodeToString(data)
+		result.RemainingCount = &[]int64{1}[0]
 	}
 
 	result.ResourceVersion = strconv.FormatUint(uint64(resourceVersionInt), 10)
