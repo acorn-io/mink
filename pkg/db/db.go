@@ -406,6 +406,14 @@ func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record
 	g.compactionLock.RLock()
 	if err := g.validateCriteria(0, criteria.After); err != nil {
 		g.compactionLock.RUnlock()
+		close(result)
+		close(initialize)
+		sub.Close()
+		go func() {
+			// ensure we empty this channel
+			for range merged {
+			}
+		}()
 		return nil, err
 	}
 
@@ -422,7 +430,11 @@ func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record
 					}
 				}()
 				return
-			case rec := <-merged:
+			case rec, ok := <-merged:
+				if !ok {
+					// This means that both initialize and sub.C have been closed.
+					return
+				}
 				if lastID != 0 && rec.ID <= lastID {
 					continue
 				}
