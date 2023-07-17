@@ -58,7 +58,7 @@ func (c *Config) complete() {
 		c.HTTPSListenPort = c.HTTPListenPort + 1
 	}
 	if len(c.LongRunningVerbs) == 0 {
-		c.LongRunningResources = []string{"watch", "proxy"}
+		c.LongRunningVerbs = []string{"watch", "proxy"}
 	}
 	if c.Scheme == nil {
 		c.Scheme = scheme.Scheme
