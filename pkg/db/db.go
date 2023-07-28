@@ -339,7 +339,9 @@ func (g *GormDB) fill(ctx context.Context, id uint) {
 	err := g.Insert(ctx, &Record{
 		ID: id,
 	})
-	klog.Infof("failed to insert fill record for ID %d: %v", id, err)
+	if err != nil {
+		klog.Infof("failed to insert fill record for ID %d: %v", id, err)
+	}
 }
 
 func (g *GormDB) since(ctx context.Context, id uint) ([]Record, error) {
