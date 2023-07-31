@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/acorn-io/mink/pkg/types"
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 	apierror "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -308,15 +309,27 @@ func (s *Strategy) getExisting(ctx context.Context, gvk schema.GroupVersionKind,
 }
 
 func (s *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, error) {
-	return s.Update(ctx, obj)
+	obj, err := s.Update(ctx, obj)
+	if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 {
+		return obj, newConflict(s.gvk, obj.GetName(), err)
+	}
+	return obj, err
 }
 
 func (s *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
-	return s.update(ctx, true, obj)
+	obj, err := s.update(ctx, true, obj)
+	if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 {
+		return obj, newConflict(s.gvk, obj.GetName(), err)
+	}
+	return obj, err
 }
 
 func (s *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, error) {
-	return s.update(ctx, false, obj)
+	obj, err := s.update(ctx, false, obj)
+	if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 {
+		return obj, newConflict(s.gvk, obj.GetName(), err)
+	}
+	return obj, err
 }
 
 func strptr(s string) *string {
@@ -392,6 +405,9 @@ func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (t
 func (s *Strategy) Create(ctx context.Context, obj types.Object) (result types.Object, err error) {
 	err = s.db.Transaction(ctx, func(ctx context.Context) error {
 		result, err = s.create(ctx, obj)
+		if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 {
+			return newConflict(s.gvk, obj.GetName(), err)
+		}
 		return err
 	})
 	return
