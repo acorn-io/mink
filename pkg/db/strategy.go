@@ -310,26 +310,17 @@ func (s *Strategy) getExisting(ctx context.Context, gvk schema.GroupVersionKind,
 
 func (s *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, error) {
 	obj, err := s.Update(ctx, obj)
-	if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 { // error 1062 is a duplicate entry error
-		return obj, newConflict(s.gvk, obj.GetName(), err)
-	}
-	return obj, err
+	return obj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 }
 
 func (s *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
 	obj, err := s.update(ctx, true, obj)
-	if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 { // error 1062 is a duplicate entry error
-		return obj, newConflict(s.gvk, obj.GetName(), err)
-	}
-	return obj, err
+	return obj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 }
 
 func (s *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, error) {
 	obj, err := s.update(ctx, false, obj)
-	if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 { // error 1062 is a duplicate entry error
-		return obj, newConflict(s.gvk, obj.GetName(), err)
-	}
-	return obj, err
+	return obj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 }
 
 func strptr(s string) *string {
