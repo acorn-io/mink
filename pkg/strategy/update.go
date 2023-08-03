@@ -144,6 +144,10 @@ func (a *UpdateAdapter) update(ctx context.Context, status bool, name string, ob
 			}
 		}
 
+		if len(options.DryRun) != 0 && options.DryRun[0] == metav1.DryRunAll {
+			return obj, false, nil
+		}
+
 		newObj, err := a.strategy.Create(ctx, obj.(types.Object))
 		return newObj, true, err
 	}
@@ -158,6 +162,10 @@ func (a *UpdateAdapter) update(ctx context.Context, status bool, name string, ob
 		if err := updateValidation(ctx, obj.DeepCopyObject(), existing.DeepCopyObject()); err != nil {
 			return nil, false, err
 		}
+	}
+
+	if len(options.DryRun) != 0 && options.DryRun[0] == metav1.DryRunAll {
+		return obj, false, nil
 	}
 
 	if status {

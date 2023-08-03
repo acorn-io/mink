@@ -100,6 +100,10 @@ func (a *CreateAdapter) Create(ctx context.Context, obj runtime.Object, createVa
 		}
 	}
 
+	if len(options.DryRun) != 0 && options.DryRun[0] == metav1.DryRunAll {
+		return obj, nil
+	}
+
 	return a.strategy.Create(ctx, obj.(types.Object))
 }
 
