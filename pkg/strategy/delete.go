@@ -91,6 +91,11 @@ func (a *DeleteAdapter) Delete(ctx context.Context, name string, deleteValidatio
 
 	now := metav1.Now()
 	tObj.SetDeletionTimestamp(&now)
+
+	if len(options.DryRun) != 0 && options.DryRun[0] == metav1.DryRunAll {
+		return obj, false, nil
+	}
+
 	newObj, err := a.strategy.Delete(ctx, tObj)
 	return newObj, true, err
 }
