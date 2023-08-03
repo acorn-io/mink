@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/acorn-io/mink/pkg/types"
-	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 	apierror "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -309,8 +308,7 @@ func (s *Strategy) getExisting(ctx context.Context, gvk schema.GroupVersionKind,
 }
 
 func (s *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, error) {
-	obj, err := s.Update(ctx, obj)
-	return obj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
+	return s.Update(ctx, obj)
 }
 
 func (s *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
@@ -396,10 +394,7 @@ func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (t
 func (s *Strategy) Create(ctx context.Context, obj types.Object) (result types.Object, err error) {
 	err = s.db.Transaction(ctx, func(ctx context.Context) error {
 		result, err = s.create(ctx, obj)
-		if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 {
-			return newConflict(s.gvk, obj.GetName(), err)
-		}
-		return err
+		return translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 	})
 	return
 }
