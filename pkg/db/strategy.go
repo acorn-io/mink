@@ -312,11 +312,13 @@ func (s *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, 
 }
 
 func (s *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
-	return s.update(ctx, true, obj)
+	obj, err := s.update(ctx, true, obj)
+	return obj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 }
 
 func (s *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, error) {
-	return s.update(ctx, false, obj)
+	obj, err := s.update(ctx, false, obj)
+	return obj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 }
 
 func strptr(s string) *string {
@@ -392,7 +394,7 @@ func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (t
 func (s *Strategy) Create(ctx context.Context, obj types.Object) (result types.Object, err error) {
 	err = s.db.Transaction(ctx, func(ctx context.Context) error {
 		result, err = s.create(ctx, obj)
-		return err
+		return translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 	})
 	return
 }
