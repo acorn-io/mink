@@ -48,10 +48,6 @@ func newResourceVersionMismatch(gvk schema.GroupVersionKind, name string) error 
 }
 
 func translateDuplicateEntryErr(err error, gvk schema.GroupVersionKind, objName string) error {
-	if err == nil {
-		return err
-	}
-
 	if err, ok := err.(*mysql.MySQLError); ok && err.Number == 1062 { // error 1062 is a duplicate entry error
 		return newConflict(gvk, objName, err)
 	}
