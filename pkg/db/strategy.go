@@ -312,13 +312,13 @@ func (s *Strategy) Delete(ctx context.Context, obj types.Object) (types.Object, 
 }
 
 func (s *Strategy) UpdateStatus(ctx context.Context, obj types.Object) (types.Object, error) {
-	obj, err := s.update(ctx, true, obj)
-	return obj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
+	newObj, err := s.update(ctx, true, obj)
+	return newObj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 }
 
 func (s *Strategy) Update(ctx context.Context, obj types.Object) (types.Object, error) {
-	obj, err := s.update(ctx, false, obj)
-	return obj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
+	newObj, err := s.update(ctx, false, obj)
+	return newObj, translateDuplicateEntryErr(err, s.gvk, obj.GetName())
 }
 
 func strptr(s string) *string {
