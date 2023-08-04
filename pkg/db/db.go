@@ -340,7 +340,7 @@ func (g *GormDB) fill(ctx context.Context, id uint) {
 		ID: id,
 	})
 	if err != nil {
-		klog.Infof("failed to insert fill record for ID %d: %v", id, err)
+		klog.Errorf("failed to insert fill record for ID %d: %v", id, err)
 	}
 }
 
