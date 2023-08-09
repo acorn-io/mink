@@ -21,6 +21,10 @@ type watchResult struct {
 
 func (w *watchResult) Stop() {
 	w.cancel()
+	go func() {
+		for range w.c {
+		}
+	}()
 }
 
 func (w *watchResult) ResultChan() <-chan watch.Event {
