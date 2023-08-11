@@ -24,6 +24,8 @@ import (
 	netutils "k8s.io/utils/net"
 )
 
+const MinkHeaderKey = "X-Mink-Server"
+
 type Server struct {
 	config           *Config
 	Config           *server.RecommendedConfig
@@ -179,7 +181,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	address := fmt.Sprintf("0.0.0.0:%d", s.config.HTTPListenPort)
 
-	var handler http.Handler = readyServer.Handler
+	handler := addResponseHeader(readyServer.Handler)
 	for i := len(s.config.Middleware) - 1; i >= 0; i-- {
 		handler = s.config.Middleware[i](handler)
 	}
@@ -206,4 +208,13 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+func addResponseHeader(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// This is to indicate that the response actually came from a mink server.
+		// One day we might consider adding a request ID or something here.
+		w.Header().Add(MinkHeaderKey, "true")
+		handler.ServeHTTP(w, r)
+	})
 }
