@@ -93,6 +93,7 @@ func New(config *Config) (*Server, error) {
 
 	opts := config.DefaultOptions
 	opts.SecureServing.BindPort = config.HTTPSListenPort
+	opts.SecureServing.HTTP2MaxStreamsPerConnection = 2500
 	opts.Authentication.SkipInClusterLookup = !config.SupportAPIAggregation
 	opts.Authentication.RemoteKubeConfigFileOptional = !config.SupportAPIAggregation
 
