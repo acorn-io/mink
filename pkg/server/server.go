@@ -18,6 +18,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	"k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/filters"
+	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/options"
 	"k8s.io/client-go/kubernetes/scheme"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
@@ -50,6 +51,7 @@ type Config struct {
 	SupportAPIAggregation bool
 	DefaultOptions        *options.RecommendedOptions
 	IgnoreStartFailure    bool
+	ReadinessCheckers     []healthz.HealthChecker
 }
 
 func (c *Config) complete() {
@@ -136,6 +138,8 @@ func New(config *Config) (*Server, error) {
 			return err
 		})
 	}
+
+	serverConfig.AddReadyzChecks(config.ReadinessCheckers...)
 
 	server, err := serverConfig.Complete().New(config.Name, server.NewEmptyDelegate())
 	if err != nil {
