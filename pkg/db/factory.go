@@ -2,7 +2,9 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ import (
 
 type Factory struct {
 	db               *gorm.DB
+	sqlDB            *sql.DB
 	schema           *runtime.Scheme
 	migrationTimeout time.Duration
 	AutoMigrate      bool
@@ -72,11 +75,25 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetMaxOpenConns(5)
 	f.db = db
+	f.sqlDB = sqlDB
 	return f, nil
 }
 
 func (f *Factory) Scheme() *runtime.Scheme {
 	return f.schema
+}
+
+func (f *Factory) Name() string {
+	return "Mink DB"
+}
+
+func (f *Factory) Check(req *http.Request) error {
+	err := f.sqlDB.PingContext(req.Context())
+	if err != nil {
+		logrus.Warnf("Failed to ping database: %v", err)
+	}
+
+	return err
 }
 
 type TableNamer interface {
