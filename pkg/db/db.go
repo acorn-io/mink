@@ -3,6 +3,8 @@ package db
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -17,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/storage/value"
 	"k8s.io/klog/v2"
 )
 
@@ -30,11 +33,12 @@ const (
 )
 
 type GormDB struct {
-	db          *gorm.DB
-	tableName   string
-	gvk         schema.GroupVersionKind
-	trigger     chan struct{}
-	broadcaster *channel.Broadcaster[Record]
+	db           *gorm.DB
+	tableName    string
+	gvk          schema.GroupVersionKind
+	trigger      chan struct{}
+	broadcaster  *channel.Broadcaster[Record]
+	transformers map[schema.GroupResource]value.Transformer
 
 	compactionLock sync.RWMutex
 	compaction     uint
@@ -42,13 +46,14 @@ type GormDB struct {
 	lastID         uint
 }
 
-func NewDB(tableName string, gvk schema.GroupVersionKind, db *gorm.DB) *GormDB {
+func NewDB(tableName string, gvk schema.GroupVersionKind, db *gorm.DB, transformers map[schema.GroupResource]value.Transformer) *GormDB {
 	return &GormDB{
-		gvk:         gvk,
-		db:          db,
-		tableName:   tableName,
-		trigger:     make(chan struct{}, 1),
-		broadcaster: channel.NewBroadcaster(make(chan Record)),
+		gvk:          gvk,
+		db:           db,
+		tableName:    tableName,
+		trigger:      make(chan struct{}, 1),
+		broadcaster:  channel.NewBroadcaster(make(chan Record)),
+		transformers: transformers,
 	}
 }
 
@@ -502,7 +507,17 @@ func (g *GormDB) find(ctx context.Context, db *gorm.DB, criteria Criteria) (resu
 	if !criteria.ignoreCompactionCheck {
 		g.compactionLock.RUnlock()
 	}
-	return result, resourceVersion, db.Error
+	if db.Error != nil {
+		return result, resourceVersion, db.Error
+	}
+
+	for _, rec := range result {
+		if err := g.decryptData(ctx, &rec); err != nil {
+			return result, resourceVersion, err
+		}
+	}
+
+	return result, resourceVersion, nil
 }
 
 func (g *GormDB) finalize(ctx context.Context, db *gorm.DB, criteria Criteria) (*gorm.DB, uint, error) {
@@ -641,6 +656,9 @@ func (g *GormDB) Transaction(ctx context.Context, do func(ctx context.Context) e
 
 func (g *GormDB) Insert(ctx context.Context, rec *Record) error {
 	defer g.triggerWatchLoop()
+	if err := g.encryptData(ctx, rec); err != nil {
+		return err
+	}
 	return g.getDB(ctx).Transaction(func(tx *gorm.DB) error {
 		tx = tx.WithContext(ctx)
 		if rec.Previous != nil {
@@ -655,4 +673,64 @@ func (g *GormDB) Insert(ctx context.Context, rec *Record) error {
 		}
 		return tx.Table(g.tableName).Create(rec).Error
 	})
+}
+
+// uid is here to fulfill the value.Context interface for the transformer.
+// This is similar to authenticatedDataString from the k8s apiserver's storage interface
+// for etcd: https://github.com/kubernetes/kubernetes/blob/a42f4f61c2c46553bfe338eefe9e81818c7360b4/staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go#L63
+type uid string
+
+func (u uid) AuthenticatedData() []byte {
+	return []byte(u)
+}
+
+func (g *GormDB) encryptData(ctx context.Context, rec *Record) error {
+	gr := schema.GroupResource{
+		Group: rec.APIGroup,
+		// This is a hack to convert Kind to Resource. Resource is supposed to be the lowercase and plural of Kind.
+		// We will expect the provided EncryptionConfiguration to use lowercase and singular for the resource names instead, to make this easier.
+		Resource: strings.ToLower(rec.Kind),
+	}
+	logrus.Debugf("(encryptData) Finding transformer for GroupResource: %s", gr.String())
+
+	if t, exists := g.transformers[gr]; exists {
+		logrus.Debugf("Encrypting data for record %s in namespace %s", rec.Name, rec.Namespace)
+		encryptedData, err := t.TransformToStorage(ctx, []byte(rec.Data.String()), uid(rec.UID))
+		if err != nil {
+			return err
+		}
+
+		rec.Data, err = json.Marshal(map[string]string{
+			"e": base64.StdEncoding.EncodeToString(encryptedData),
+		})
+		return err
+	}
+	return nil
+}
+
+func (g *GormDB) decryptData(ctx context.Context, rec *Record) error {
+	gr := schema.GroupResource{
+		Group: rec.APIGroup,
+		// This is a hack to convert Kind to Resource. Resource is supposed to be the lowercase and plural of Kind.
+		// We will expect the provided EncryptionConfiguration to use lowercase and singular for the resource names instead, to make this easier.
+		Resource: strings.ToLower(rec.Kind),
+	}
+	logrus.Debugf("(decryptData) Finding transformer for GroupResource: %s", gr.String())
+
+	if t, exists := g.transformers[gr]; exists {
+		logrus.Debugf("Decrypting data for record %s in namespace %s", rec.Name, rec.Namespace)
+		m := &map[string]string{}
+		if err := json.Unmarshal(rec.Data, m); err != nil {
+			// If it doesn't unmarshal, then it wasn't encrypted by the transformer, so just return
+			return nil
+		}
+		data, err := base64.StdEncoding.DecodeString((*m)["e"])
+		if err != nil {
+			return err
+		}
+
+		rec.Data, _, err = t.TransformFromStorage(ctx, data, uid(rec.UID))
+		return err
+	}
+	return nil
 }

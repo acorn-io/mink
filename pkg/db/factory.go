@@ -16,6 +16,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apiserver/pkg/server/options/encryptionconfig"
+	"k8s.io/apiserver/pkg/storage/value"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
@@ -25,6 +28,7 @@ type Factory struct {
 	schema           *runtime.Scheme
 	migrationTimeout time.Duration
 	AutoMigrate      bool
+	transformers     map[schema.GroupResource]value.Transformer
 }
 
 type FactoryOption func(*Factory)
@@ -34,6 +38,19 @@ func WithMigrationTimeout(timeout time.Duration) FactoryOption {
 	return func(f *Factory) {
 		f.migrationTimeout = timeout
 	}
+}
+
+func WithEncryptionConfiguration(ctx context.Context, configPath string) (FactoryOption, error) {
+	encryptionConf, err := encryptionconfig.LoadEncryptionConfig(ctx, configPath, false)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Transformers: %+v", encryptionConf.Transformers)
+
+	return func(f *Factory) {
+		f.transformers = encryptionConf.Transformers
+	}, nil
 }
 
 func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Factory, error) {
@@ -128,7 +145,7 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 			}
 		}
 	}
-	s, err := NewStrategy(f.schema, obj, tableName, f.db)
+	s, err := NewStrategy(f.schema, obj, tableName, f.db, f.transformers)
 	if err != nil {
 		return nil, err
 	}

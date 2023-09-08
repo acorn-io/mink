@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
+	"k8s.io/apiserver/pkg/storage/value"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
@@ -36,7 +37,7 @@ type cont struct {
 	ID uint `json:"id,omitempty"`
 }
 
-func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB) (*Strategy, error) {
+func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB, transformers map[schema.GroupResource]value.Transformer) (*Strategy, error) {
 	gvk, err := apiutil.GVKForObject(obj, scheme)
 	if err != nil {
 		return nil, err
@@ -55,7 +56,7 @@ func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, d
 	})
 	s := &Strategy{
 		scheme:  scheme,
-		db:      NewDB(tableName, gvk, db),
+		db:      NewDB(tableName, gvk, db, transformers),
 		gvk:     gvk,
 		obj:     obj,
 		objList: objList,
