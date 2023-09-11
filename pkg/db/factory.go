@@ -46,8 +46,6 @@ func WithEncryptionConfiguration(ctx context.Context, configPath string) (Factor
 		return nil, err
 	}
 
-	logrus.Infof("Transformers: %+v", encryptionConf.Transformers)
-
 	return func(f *Factory) {
 		f.transformers = encryptionConf.Transformers
 	}, nil
