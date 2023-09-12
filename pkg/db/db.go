@@ -511,8 +511,8 @@ func (g *GormDB) find(ctx context.Context, db *gorm.DB, criteria Criteria) (resu
 		return result, resourceVersion, db.Error
 	}
 
-	for _, rec := range result {
-		if err := g.decryptData(ctx, &rec); err != nil {
+	for i := range result {
+		if err := g.decryptData(ctx, &result[i]); err != nil {
 			return result, resourceVersion, err
 		}
 	}
