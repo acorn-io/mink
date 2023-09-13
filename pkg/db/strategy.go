@@ -552,6 +552,7 @@ func (s *Strategy) objectToRecord(obj types.Object) (*Record, error) {
 		Generation: 1,
 		Previous:   nil,
 		Created:    time.Now(),
+		Updated:    time.Now(),
 		Metadata:   metadataData,
 		Data:       specData,
 		Status:     statusData,
