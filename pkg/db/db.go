@@ -512,7 +512,7 @@ func (g *GormDB) find(ctx context.Context, db *gorm.DB, criteria Criteria) (resu
 	}
 
 	for i := range result {
-		if err := g.decryptData(ctx, &result[i]); err != nil {
+		if err := g.decryptRecord(ctx, &result[i]); err != nil {
 			return result, resourceVersion, err
 		}
 	}
@@ -656,7 +656,7 @@ func (g *GormDB) Transaction(ctx context.Context, do func(ctx context.Context) e
 
 func (g *GormDB) Insert(ctx context.Context, rec *Record) error {
 	defer g.triggerWatchLoop()
-	if err := g.encryptData(ctx, rec); err != nil {
+	if err := g.encryptRecord(ctx, rec); err != nil {
 		return err
 	}
 	return g.getDB(ctx).Transaction(func(tx *gorm.DB) error {
@@ -684,14 +684,14 @@ func (u uid) AuthenticatedData() []byte {
 	return []byte(u)
 }
 
-func (g *GormDB) encryptData(ctx context.Context, rec *Record) error {
+func (g *GormDB) encryptRecord(ctx context.Context, rec *Record) error {
 	gr := schema.GroupResource{
 		Group: rec.APIGroup,
 		// This is a hack to convert Kind to Resource. Resource is supposed to be the lowercase and plural of Kind.
 		// We will expect the provided EncryptionConfiguration to use lowercase and singular for the resource names instead, to make this easier.
 		Resource: strings.ToLower(rec.Kind),
 	}
-	logrus.Debugf("(encryptData) Finding transformer for GroupResource: %s", gr.String())
+	logrus.Debugf("(encryptRecord) Finding transformer for GroupResource: %s", gr.String())
 
 	if t, exists := g.transformers[gr]; exists {
 		logrus.Debugf("Encrypting data for record %s in namespace %s", rec.Name, rec.Namespace)
@@ -708,21 +708,23 @@ func (g *GormDB) encryptData(ctx context.Context, rec *Record) error {
 	return nil
 }
 
-func (g *GormDB) decryptData(ctx context.Context, rec *Record) error {
+func (g *GormDB) decryptRecord(ctx context.Context, rec *Record) error {
 	gr := schema.GroupResource{
 		Group: rec.APIGroup,
 		// This is a hack to convert Kind to Resource. Resource is supposed to be the lowercase and plural of Kind.
 		// We will expect the provided EncryptionConfiguration to use lowercase and singular for the resource names instead, to make this easier.
 		Resource: strings.ToLower(rec.Kind),
 	}
-	logrus.Debugf("(decryptData) Finding transformer for GroupResource: %s", gr.String())
+	logrus.Debugf("(decryptRecord) Finding transformer for GroupResource: %s", gr.String())
 
 	if t, exists := g.transformers[gr]; exists {
 		logrus.Debugf("Decrypting data for record %s in namespace %s", rec.Name, rec.Namespace)
 		m := &map[string]string{}
 		if err := json.Unmarshal(rec.Data, m); err != nil {
-			// If it doesn't unmarshal, then it wasn't encrypted by the transformer, so just return
-			return nil
+			// This table is not encrypted, but needs to be, so encrypt all records in it
+			if err := g.encryptTable(ctx); err != nil {
+				return fmt.Errorf("error while encrypting table for GVK %s: %w", g.gvk.String(), err)
+			}
 		}
 		data, err := base64.StdEncoding.DecodeString((*m)["e"])
 		if err != nil {
@@ -731,6 +733,44 @@ func (g *GormDB) decryptData(ctx context.Context, rec *Record) error {
 
 		rec.Data, _, err = t.TransformFromStorage(ctx, data, uid(rec.UID))
 		return err
+	}
+	return nil
+}
+
+func (g *GormDB) encryptTable(ctx context.Context) error {
+	gr := schema.GroupResource{
+		Group:    g.gvk.Group,
+		Resource: strings.ToLower(g.gvk.Kind),
+	}
+	logrus.Debugf("(encryptTable) Finding transformer for GroupResource: %s", gr.String())
+
+	if _, exists := g.transformers[gr]; exists {
+		logrus.Debugf("Encrypting entire table for GVK %s", g.gvk.String())
+
+		var records []Record
+		db := g.getDB(ctx).Table(g.tableName).Find(&records)
+		if db.Error != nil {
+			return db.Error
+		}
+
+		for i := range records {
+			if err := g.encryptRecord(ctx, &records[i]); err != nil {
+				return err
+			}
+		}
+
+		if len(records) > 0 {
+			return g.getDB(ctx).Transaction(func(tx *gorm.DB) error {
+				tx = tx.WithContext(ctx)
+				for _, rec := range records {
+					db := tx.Table(g.tableName).Where("id = ?", rec.ID).Update("data", rec.Data)
+					if db.Error != nil {
+						return db.Error
+					}
+				}
+				return nil
+			})
+		}
 	}
 	return nil
 }
