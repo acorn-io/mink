@@ -438,6 +438,7 @@ func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record
 				}()
 				return
 			case rec, ok := <-merged:
+				_ = g.decryptData(ctx, &rec)
 				if !ok {
 					// This means that both initialize and sub.C have been closed.
 					return
