@@ -53,3 +53,7 @@ func translateDuplicateEntryErr(err error, gvk schema.GroupVersionKind, objName 
 	}
 	return err
 }
+
+func newPartitionRequiredError() error {
+	return apierrors.NewInternalError(fmt.Errorf("partition ID required"))
+}

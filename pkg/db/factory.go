@@ -30,6 +30,8 @@ type Factory struct {
 	migrationTimeout time.Duration
 	AutoMigrate      bool
 	transformers     map[schema.GroupKind]value.Transformer
+	partitionIDRequired bool
+
 }
 
 type FactoryOption func(*Factory)
@@ -61,6 +63,13 @@ func WithEncryptionConfiguration(ctx context.Context, configPath string) (Factor
 	return func(f *Factory) {
 		f.transformers = transformers
 	}, nil
+}
+
+// WithPartitionIDRequired will configure the all DB strategies created from this factory to require a partition ID when querying the database.
+func WithPartitionIDRequired() FactoryOption {
+	return func(f *Factory) {
+		f.partitionIDRequired = true
+	}
 }
 
 func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Factory, error) {
@@ -155,7 +164,7 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 			}
 		}
 	}
-	s, err := NewStrategy(f.schema, obj, tableName, f.db, f.transformers)
+	s, err := NewStrategy(f.schema, obj, tableName, f.db, f.transformers, f.partitionIDRequired)
 	if err != nil {
 		return nil, err
 	}

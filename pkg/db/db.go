@@ -190,7 +190,6 @@ func (g *GormDB) gc(ctx context.Context) {
 		nextCompactionID -= g.getCompactRetainCount()
 
 		if cont, err := g.markCompaction(ctx, nextCompactionID); err != nil {
-			g.compactionLock.Unlock()
 			logrus.Errorf("Failed to write compaction record [%s] %d: %v", g.tableName, nextCompactionID, err)
 			continue
 		} else if !cont {
@@ -378,6 +377,7 @@ func (g *GormDB) initializeWatch(ctx context.Context, criteria WatchCriteria, re
 			Limit:                 1000,
 			Before:                before,
 			ignoreCompactionCheck: true,
+			PartitionID:           criteria.PartitionID,
 		})
 		if err != nil {
 			return err
@@ -571,6 +571,9 @@ func (g *GormDB) possibleIDs(ctx context.Context, criteria Criteria) (*gorm.DB, 
 	}
 	if !criteria.IncludeGC {
 		query.Where("garbage IS FALSE")
+	}
+	if criteria.PartitionID != "" {
+		query.Where("partition_id = ?", criteria.PartitionID)
 	}
 
 	return query, criteria.Before, nil
