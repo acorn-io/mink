@@ -37,7 +37,7 @@ type cont struct {
 	ID uint `json:"id,omitempty"`
 }
 
-func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB, transformers map[schema.GroupResource]value.Transformer) (*Strategy, error) {
+func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB, transformers map[schema.GroupKind]value.Transformer) (*Strategy, error) {
 	gvk, err := apiutil.GVKForObject(obj, scheme)
 	if err != nil {
 		return nil, err

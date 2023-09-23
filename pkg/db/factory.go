@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -28,7 +29,7 @@ type Factory struct {
 	schema           *runtime.Scheme
 	migrationTimeout time.Duration
 	AutoMigrate      bool
-	transformers     map[schema.GroupResource]value.Transformer
+	transformers     map[schema.GroupKind]value.Transformer
 }
 
 type FactoryOption func(*Factory)
@@ -46,8 +47,19 @@ func WithEncryptionConfiguration(ctx context.Context, configPath string) (Factor
 		return nil, err
 	}
 
+	// Although the config reading code expects GroupResources, we expect GroupKinds,
+	// so just convert, assuming that the Resource is actually a Kind, but lowercase.
+	transformers := make(map[schema.GroupKind]value.Transformer, len(encryptionConf.Transformers))
+	for gr, t := range encryptionConf.Transformers {
+		if len(gr.Resource) < 2 {
+			return nil, fmt.Errorf("invalid Resource: %s", gr.Resource)
+		}
+
+		transformers[schema.GroupKind{Group: gr.Group, Kind: strings.ToUpper(gr.Resource[:1]) + gr.Resource[1:]}] = t
+	}
+
 	return func(f *Factory) {
-		f.transformers = encryptionConf.Transformers
+		f.transformers = transformers
 	}, nil
 }
 

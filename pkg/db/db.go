@@ -38,7 +38,7 @@ type GormDB struct {
 	gvk          schema.GroupVersionKind
 	trigger      chan struct{}
 	broadcaster  *channel.Broadcaster[Record]
-	transformers map[schema.GroupResource]value.Transformer
+	transformers map[schema.GroupKind]value.Transformer
 
 	compactionLock sync.RWMutex
 	compaction     uint
@@ -46,7 +46,7 @@ type GormDB struct {
 	lastID         uint
 }
 
-func NewDB(tableName string, gvk schema.GroupVersionKind, db *gorm.DB, transformers map[schema.GroupResource]value.Transformer) *GormDB {
+func NewDB(tableName string, gvk schema.GroupVersionKind, db *gorm.DB, transformers map[schema.GroupKind]value.Transformer) *GormDB {
 	return &GormDB{
 		gvk:          gvk,
 		db:           db,
@@ -686,15 +686,9 @@ func (u uid) AuthenticatedData() []byte {
 }
 
 func (g *GormDB) encryptData(ctx context.Context, rec *Record) error {
-	gr := schema.GroupResource{
-		Group: rec.APIGroup,
-		// This is a hack to convert Kind to Resource. Resource is supposed to be the lowercase and plural of Kind.
-		// We will expect the provided EncryptionConfiguration to use lowercase and singular for the resource names instead, to make this easier.
-		Resource: strings.ToLower(rec.Kind),
-	}
-	logrus.Debugf("(encryptData) Finding transformer for GroupResource: %s", gr.String())
+	gk := schema.GroupKind{Group: rec.APIGroup, Kind: rec.Kind}
 
-	if t, exists := g.transformers[gr]; exists {
+	if t, exists := g.transformers[gk]; exists {
 		logrus.Debugf("Encrypting data for record %s in namespace %s", rec.Name, rec.Namespace)
 		encryptedData, err := t.TransformToStorage(ctx, []byte(rec.Data.String()), uid(rec.UID))
 		if err != nil {
@@ -710,15 +704,9 @@ func (g *GormDB) encryptData(ctx context.Context, rec *Record) error {
 }
 
 func (g *GormDB) decryptData(ctx context.Context, rec *Record) error {
-	gr := schema.GroupResource{
-		Group: rec.APIGroup,
-		// This is a hack to convert Kind to Resource. Resource is supposed to be the lowercase and plural of Kind.
-		// We will expect the provided EncryptionConfiguration to use lowercase and singular for the resource names instead, to make this easier.
-		Resource: strings.ToLower(rec.Kind),
-	}
-	logrus.Debugf("(decryptData) Finding transformer for GroupResource: %s", gr.String())
+	gk := schema.GroupKind{Group: rec.APIGroup, Kind: rec.Kind}
 
-	if t, exists := g.transformers[gr]; exists {
+	if t, exists := g.transformers[gk]; exists {
 		logrus.Debugf("Decrypting data for record %s in namespace %s", rec.Name, rec.Namespace)
 		m := &map[string]string{}
 		if err := json.Unmarshal(rec.Data, m); err != nil {
