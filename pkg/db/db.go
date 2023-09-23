@@ -353,6 +353,13 @@ func (g *GormDB) since(ctx context.Context, id uint) ([]Record, error) {
 	var records []Record
 	db := g.getDB(ctx).WithContext(ctx)
 	resp := db.Table(g.tableName).Model(records).Where("id > ?", id).Find(&records)
+
+	for i := range records {
+		if err := g.decryptData(ctx, &records[i]); err != nil {
+			return records, err
+		}
+	}
+
 	return records, resp.Error
 }
 
@@ -438,7 +445,6 @@ func (g *GormDB) Watch(ctx context.Context, criteria WatchCriteria) (chan Record
 				}()
 				return
 			case rec, ok := <-merged:
-				_ = g.decryptData(ctx, &rec)
 				if !ok {
 					// This means that both initialize and sub.C have been closed.
 					return
