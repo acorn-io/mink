@@ -714,12 +714,12 @@ func (g *GormDB) decryptData(ctx context.Context, rec *Record) error {
 
 	if t, exists := g.transformers[gk]; exists {
 		logrus.Debugf("Decrypting data for record %s in namespace %s", rec.Name, rec.Namespace)
-		m := &map[string]string{}
-		if err := json.Unmarshal(rec.Data, m); err != nil {
+		m := map[string]string{}
+		if err := json.Unmarshal(rec.Data, &m); err != nil {
 			// If it doesn't unmarshal, then it wasn't encrypted by the transformer, so just return
 			return nil
 		}
-		data, err := base64.StdEncoding.DecodeString((*m)["e"])
+		data, err := base64.StdEncoding.DecodeString(m["e"])
 		if err != nil {
 			return err
 		}
