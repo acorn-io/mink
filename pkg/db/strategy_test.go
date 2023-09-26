@@ -36,7 +36,7 @@ func newTestStore(t *testing.T) *Strategy {
 		t.Fatal(err)
 	}
 
-	s, err := NewStrategy(scheme.Scheme, &corev1.Pod{}, "pod", db)
+	s, err := NewStrategy(scheme.Scheme, &corev1.Pod{}, "pod", db, false)
 	if err != nil {
 		t.Fatal(err)
 	}

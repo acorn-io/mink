@@ -23,11 +23,12 @@ import (
 )
 
 type Strategy struct {
-	scheme  *runtime.Scheme
-	db      DB
-	obj     runtime.Object
-	objList runtime.Object
-	gvk     schema.GroupVersionKind
+	scheme              *runtime.Scheme
+	db                  DB
+	obj                 runtime.Object
+	objList             runtime.Object
+	gvk                 schema.GroupVersionKind
+	partitionIDRequired bool
 
 	dbCtx    context.Context
 	dbCancel func()
@@ -37,7 +38,7 @@ type cont struct {
 	ID uint `json:"id,omitempty"`
 }
 
-func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB, transformers map[schema.GroupKind]value.Transformer) (*Strategy, error) {
+func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, db *gorm.DB, transformers map[schema.GroupKind]value.Transformer, partitionIDRequired bool) (*Strategy, error) {
 	gvk, err := apiutil.GVKForObject(obj, scheme)
 	if err != nil {
 		return nil, err
@@ -60,6 +61,7 @@ func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, d
 		gvk:     gvk,
 		obj:     obj,
 		objList: objList,
+		partitionIDRequired: partitionIDRequired,
 	}
 	s.dbCtx, s.dbCancel = context.WithCancel(context.Background())
 	return s, s.db.Start(s.dbCtx)
@@ -74,10 +76,16 @@ func (s *Strategy) Start(ctx context.Context) {
 }
 
 func (s *Strategy) Get(ctx context.Context, namespace, name string) (types.Object, error) {
+	partitionID := PartitionIDFromContext(ctx)
+	if s.partitionIDRequired && partitionID == "" {
+		return nil, newPartitionRequiredError()
+	}
+
 	records, _, err := s.db.Get(ctx, Criteria{
 		Name:              name,
 		Namespace:         strptr(namespace),
 		NoResourceVersion: true,
+		PartitionID:       partitionID,
 	})
 	if err != nil {
 		return nil, err
@@ -91,11 +99,18 @@ func (s *Strategy) Get(ctx context.Context, namespace, name string) (types.Objec
 }
 
 func (s *Strategy) GetToList(ctx context.Context, namespace, name string) (types.ObjectList, error) {
+	partitionID := PartitionIDFromContext(ctx)
+	if s.partitionIDRequired && partitionID == "" {
+		return nil, newPartitionRequiredError()
+	}
+
 	list := s.objList.DeepCopyObject().(types.ObjectList)
 	obj := s.obj.DeepCopyObject()
+
 	records, resourceVersionInt, err := s.db.Get(ctx, Criteria{
-		Name:      name,
-		Namespace: strptr(namespace),
+		Name:        name,
+		Namespace:   strptr(namespace),
+		PartitionID: partitionID,
 	})
 	if err != nil {
 		return nil, err
@@ -115,9 +130,15 @@ func (s *Strategy) GetToList(ctx context.Context, namespace, name string) (types
 }
 
 func (s *Strategy) Watch(ctx context.Context, namespace string, opts storage.ListOptions) (<-chan watch.Event, error) {
+	partitionID := PartitionIDFromContext(ctx)
+	if s.partitionIDRequired && partitionID == "" {
+		return nil, newPartitionRequiredError()
+	}
+
 	criteria := WatchCriteria{
 		Namespace:     nilOnEmpty(namespace),
 		LabelSelector: opts.Predicate.Label,
+		PartitionID:   partitionID,
 	}
 	name, ok := opts.Predicate.MatchesSingle()
 	if ok {
@@ -147,6 +168,10 @@ func (s *Strategy) Watch(ctx context.Context, namespace string, opts storage.Lis
 						Object: obj,
 					}
 				}
+				continue
+			}
+
+			if criteria.PartitionID != "" && record.PartitionID != criteria.PartitionID {
 				continue
 			}
 
@@ -208,8 +233,14 @@ func (s *Strategy) newObj() types.Object {
 }
 
 func (s *Strategy) List(ctx context.Context, namespace string, opts storage.ListOptions) (types.ObjectList, error) {
+	partitionID := PartitionIDFromContext(ctx)
+	if s.partitionIDRequired && partitionID == "" {
+		return nil, newPartitionRequiredError()
+	}
+
 	list := s.objList.DeepCopyObject().(types.ObjectList)
-	result, err := s.list(ctx, nilOnEmpty(namespace), opts)
+
+	result, err := s.list(ctx, nilOnEmpty(namespace), partitionID, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +258,7 @@ type listResult struct {
 	RemainingCount  *int64
 }
 
-func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.ListOptions) (*listResult, error) {
+func (s *Strategy) list(ctx context.Context, namespace *string, partitionID string, opts storage.ListOptions) (*listResult, error) {
 	result := &listResult{}
 
 	if opts.Predicate.Limit != 0 {
@@ -239,6 +270,7 @@ func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.Lis
 		Limit:         opts.Predicate.Limit,
 		LabelSelector: opts.Predicate.Label,
 		FieldSelector: opts.Predicate.Field,
+		PartitionID:   partitionID,
 	}
 
 	if opts.Predicate.Continue != "" {
@@ -290,7 +322,7 @@ func (s *Strategy) list(ctx context.Context, namespace *string, opts storage.Lis
 	return result, nil
 }
 
-func (s *Strategy) getExisting(ctx context.Context, gvk schema.GroupVersionKind, namespace *string, name string) (*Record, error) {
+func (s *Strategy) getExisting(ctx context.Context, gvk schema.GroupVersionKind, namespace *string, name, partitionID string) (*Record, error) {
 	existing, _, err := s.db.Get(ctx, Criteria{
 		Name:              name,
 		Namespace:         namespace,
@@ -298,6 +330,7 @@ func (s *Strategy) getExisting(ctx context.Context, gvk schema.GroupVersionKind,
 		NoResourceVersion: true,
 		IncludeDeleted:    true,
 		IncludeGC:         true,
+		PartitionID:       partitionID,
 	})
 	if err != nil {
 		return nil, err
@@ -334,12 +367,17 @@ func nilOnEmpty(s string) *string {
 }
 
 func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (types.Object, error) {
+	partitionID := PartitionIDFromContext(ctx)
+	if s.partitionIDRequired && partitionID == "" {
+		return nil, newPartitionRequiredError()
+	}
+
 	gvk, err := apiutil.GVKForObject(obj, s.scheme)
 	if err != nil {
 		return nil, err
 	}
 
-	existing, err := s.getExisting(ctx, gvk, strptr(obj.GetNamespace()), obj.GetName())
+	existing, err := s.getExisting(ctx, gvk, strptr(obj.GetNamespace()), obj.GetName(), partitionID)
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +400,7 @@ func (s *Strategy) update(ctx context.Context, status bool, obj types.Object) (t
 	newRecord.Deleted = existing.Deleted
 	newRecord.Removed = existing.Removed
 	newRecord.UID = existing.UID
+	newRecord.PartitionID = existing.PartitionID
 	newRecord.Updated = time.Now()
 	if status {
 		newRecord.Generation = existing.Generation
@@ -401,6 +440,11 @@ func (s *Strategy) Create(ctx context.Context, obj types.Object) (result types.O
 }
 
 func (s *Strategy) create(ctx context.Context, obj types.Object) (types.Object, error) {
+	partitionID := PartitionIDFromContext(ctx)
+	if s.partitionIDRequired && partitionID == "" {
+		return nil, newPartitionRequiredError()
+	}
+
 	existing, _, err := s.db.Get(ctx, Criteria{
 		Name:              obj.GetName(),
 		Namespace:         strptr(obj.GetNamespace()),
@@ -408,6 +452,7 @@ func (s *Strategy) create(ctx context.Context, obj types.Object) (types.Object, 
 		NoResourceVersion: true,
 		IncludeDeleted:    true,
 		IncludeGC:         true,
+		PartitionID:       partitionID,
 	})
 	if err != nil {
 		return nil, err
@@ -427,6 +472,8 @@ func (s *Strategy) create(ctx context.Context, obj types.Object) (types.Object, 
 		record.Previous = &existing[0].ID
 	}
 
+	record.PartitionID = partitionID
+
 	err = s.db.Insert(ctx, record)
 	if err != nil {
 		return nil, err
@@ -435,9 +482,9 @@ func (s *Strategy) create(ctx context.Context, obj types.Object) (types.Object, 
 	return obj, s.recordIntoObject(record, obj)
 }
 
-func (s *Strategy) recordToMap(rec *Record) (map[string]interface{}, error) {
-	metadata := map[string]interface{}{}
-	data := map[string]interface{}{}
+func (s *Strategy) recordToMap(rec *Record) (map[string]any, error) {
+	metadata := map[string]any{}
+	data := map[string]any{}
 	if len(rec.Data) > 0 {
 		err := json.Unmarshal(rec.Data, &data)
 		if err != nil {
@@ -453,7 +500,7 @@ func (s *Strategy) recordToMap(rec *Record) (map[string]interface{}, error) {
 	}
 
 	if len(rec.Status) > 0 {
-		status := map[string]interface{}{}
+		status := map[string]any{}
 
 		err := json.Unmarshal(rec.Status, &status)
 		if err != nil {
@@ -512,9 +559,9 @@ func (s *Strategy) objectToRecord(obj types.Object) (*Record, error) {
 		return nil, err
 	}
 
-	status, _ := mapData["status"].(map[string]interface{})
+	status, _ := mapData["status"].(map[string]any)
 
-	metadata, _ := mapData["metadata"].(map[string]interface{})
+	metadata, _ := mapData["metadata"].(map[string]any)
 	delete(metadata, "resourceVersion")
 	delete(metadata, "generation")
 	delete(metadata, "uid")
@@ -563,11 +610,11 @@ func (s *Strategy) Scheme() *runtime.Scheme {
 	return s.scheme
 }
 
-func toMap(obj interface{}) (map[string]interface{}, error) {
+func toMap(obj any) (map[string]any, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return nil, err
 	}
-	result := map[string]interface{}{}
+	result := map[string]any{}
 	return result, json.Unmarshal(data, &result)
 }

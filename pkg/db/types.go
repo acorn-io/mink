@@ -10,25 +10,26 @@ import (
 )
 
 type Record struct {
-	ID         uint
-	Kind       string
-	Version    string
-	APIGroup   string
-	Name       string `gorm:"index:idx_ns_name"`
-	Namespace  string `gorm:"index:idx_ns_name"`
-	UID        string
-	Generation int
-	Previous   *uint `gorm:"index:idx_previous,unique"`
-	Create     bool
-	Created    time.Time
-	Updated    time.Time
-	Deleted    *time.Time
-	Removed    *time.Time
-	Garbage    bool `gorm:"index:idx_garbage;not null;default:0"`
-	Latest     bool `gorm:"index:idx_latest;default:0"`
-	Metadata   datatypes.JSON
-	Data       datatypes.JSON
-	Status     datatypes.JSON
+	ID          uint
+	Kind        string
+	Version     string
+	APIGroup    string
+	Name        string `gorm:"index:idx_ns_name_id"`
+	Namespace   string `gorm:"index:idx_ns_name_id"`
+	UID         string
+	Generation  int
+	Previous    *uint `gorm:"index:idx_previous,unique"`
+	Create      bool
+	Created     time.Time
+	Updated     time.Time
+	Deleted     *time.Time
+	Removed     *time.Time
+	Garbage     bool `gorm:"index:idx_garbage;not null;default:0"`
+	Latest      bool `gorm:"index:idx_latest;default:0"`
+	Metadata    datatypes.JSON
+	Data        datatypes.JSON
+	Status      datatypes.JSON
+	PartitionID string `gorm:"index:idx_ns_name_id"`
 }
 
 type WatchCriteria struct {
@@ -36,6 +37,7 @@ type WatchCriteria struct {
 	Namespace     *string
 	After         uint
 	LabelSelector labels.Selector
+	PartitionID   string
 }
 
 type Criteria struct {
@@ -51,6 +53,7 @@ type Criteria struct {
 	FieldSelector     fields.Selector
 	IncludeDeleted    bool
 	IncludeGC         bool
+	PartitionID       string
 
 	ignoreCompactionCheck bool
 }
