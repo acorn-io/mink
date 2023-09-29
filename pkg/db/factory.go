@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,14 +25,13 @@ import (
 )
 
 type Factory struct {
-	db               *gorm.DB
-	sqlDB            *sql.DB
-	schema           *runtime.Scheme
-	migrationTimeout time.Duration
-	AutoMigrate      bool
-	transformers     map[schema.GroupKind]value.Transformer
+	db                  *gorm.DB
+	sqlDB               *sql.DB
+	schema              *runtime.Scheme
+	migrationTimeout    time.Duration
+	AutoMigrate         bool
+	transformers        map[schema.GroupKind]value.Transformer
 	partitionIDRequired bool
-
 }
 
 type FactoryOption func(*Factory)
@@ -108,8 +108,8 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 		return nil, err
 	}
 	sqlDB.SetConnMaxLifetime(time.Minute * 3)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetMaxOpenConns(5)
+	sqlDB.SetMaxIdleConns(EnvOrDefaultInt("MINK_DB_MAX_IDLE_CONNS", 5))
+	sqlDB.SetMaxOpenConns(EnvOrDefaultInt("MINK_DB_MAX_OPEN_CONNS", 5))
 	f.db = db
 	f.sqlDB = sqlDB
 	return f, nil
@@ -169,4 +169,15 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 		return nil, err
 	}
 	return s, nil
+}
+
+func EnvOrDefaultInt(env string, def int) int {
+	if v := os.Getenv(env); v != "" {
+		i, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return def
+		}
+		return int(i)
+	}
+	return def
 }
