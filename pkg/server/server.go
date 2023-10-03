@@ -81,7 +81,6 @@ func (c *Config) complete() {
 
 func DefaultOpts() *options.RecommendedOptions {
 	opts := options.NewRecommendedOptions("", nil)
-	opts.Audit = nil
 	opts.Etcd = nil
 	opts.CoreAPI = nil
 	opts.Authorization = nil
