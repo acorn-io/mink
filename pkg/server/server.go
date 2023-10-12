@@ -50,6 +50,7 @@ type Config struct {
 	PostStartFunc         server.PostStartHookFunc
 	SupportAPIAggregation bool
 	DefaultOptions        *options.RecommendedOptions
+	AuditConfig           *options.AuditOptions
 	IgnoreStartFailure    bool
 	ReadinessCheckers     []healthz.HealthChecker
 }
@@ -76,6 +77,9 @@ func (c *Config) complete() {
 	}
 	if c.DefaultOptions == nil {
 		c.DefaultOptions = DefaultOpts()
+		if c.AuditConfig != nil {
+			c.DefaultOptions.Audit = c.AuditConfig
+		}
 	}
 }
 
