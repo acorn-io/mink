@@ -56,11 +56,11 @@ func NewStrategy(scheme *runtime.Scheme, obj runtime.Object, tableName string, d
 		Kind:    gvk.Kind + "List",
 	})
 	s := &Strategy{
-		scheme:  scheme,
-		db:      NewDB(tableName, gvk, db, transformers),
-		gvk:     gvk,
-		obj:     obj,
-		objList: objList,
+		scheme:              scheme,
+		db:                  NewDB(tableName, gvk, db, transformers),
+		gvk:                 gvk,
+		obj:                 obj,
+		objList:             objList,
 		partitionIDRequired: partitionIDRequired,
 	}
 	s.dbCtx, s.dbCancel = context.WithCancel(context.Background())
@@ -158,6 +158,8 @@ func (s *Strategy) Watch(ctx context.Context, namespace string, opts storage.Lis
 
 	result := make(chan watch.Event)
 	go func() {
+		defer close(result)
+
 		for record := range records {
 			obj := s.newObj()
 			if record.Name == "" {
