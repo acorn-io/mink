@@ -4,18 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/acorn-io/mink/pkg/db/glogrus"
 	"github.com/acorn-io/mink/pkg/strategy"
 	"github.com/acorn-io/mink/pkg/types"
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/server/options/encryptionconfig"
@@ -24,14 +22,13 @@ import (
 )
 
 type Factory struct {
-	db               *gorm.DB
-	sqlDB            *sql.DB
-	schema           *runtime.Scheme
-	migrationTimeout time.Duration
-	AutoMigrate      bool
-	transformers     map[schema.GroupKind]value.Transformer
+	db                  *gorm.DB
+	sqlDB               *sql.DB
+	schema              *runtime.Scheme
+	migrationTimeout    time.Duration
+	AutoMigrate         bool
+	transformers        map[schema.GroupKind]value.Transformer
 	partitionIDRequired bool
-
 }
 
 type FactoryOption func(*Factory)
@@ -73,10 +70,6 @@ func WithPartitionIDRequired() FactoryOption {
 }
 
 func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Factory, error) {
-	level := logger.Warn
-	if logrus.IsLevelEnabled(logrus.TraceLevel) {
-		level = logger.Info
-	}
 	f := &Factory{
 		AutoMigrate: true,
 		schema:      schema,
@@ -92,11 +85,10 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 	gdb := mysql.Open(dsn)
 	db, err := gorm.Open(gdb, &gorm.Config{
 		SkipDefaultTransaction: true,
-		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+		Logger: glogrus.New(glogrus.Config{
 			SlowThreshold:             200 * time.Millisecond,
-			LogLevel:                  level,
 			IgnoreRecordNotFoundError: false,
-			Colorful:                  true,
+			LogSQL:                    true,
 		}),
 	})
 	if err != nil {
