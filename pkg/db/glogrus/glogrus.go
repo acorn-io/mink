@@ -100,7 +100,7 @@ func (l *Logger) Trace(ctx context.Context, begin time.Time, fc func() (string, 
 		return
 	}
 
-	log.Debug("sql query executed")
+	log.Trace("sql query executed")
 }
 
 // complete ensures that the Logger is fully initialized.
