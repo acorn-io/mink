@@ -530,7 +530,7 @@ func (s *Strategy) recordToMap(rec *Record) (map[string]any, error) {
 	metadata["generation"] = rec.Generation
 	metadata["creationTimestamp"] = rec.Created.Format(time.RFC3339)
 	if rec.Deleted != nil {
-		metadata["deletionTimestamp"] = rec.Created.Format(time.RFC3339)
+		metadata["deletionTimestamp"] = rec.Deleted.Format(time.RFC3339)
 	}
 
 	data["metadata"] = metadata
