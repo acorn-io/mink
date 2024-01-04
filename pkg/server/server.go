@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/rest"
 	"net"
 	"net/http"
 
@@ -107,6 +108,7 @@ func New(config *Config) (*Server, error) {
 	}
 
 	serverConfig := server.NewRecommendedConfig(*config.CodecFactory)
+	serverConfig.ClientConfig = generateDummyKubeconfig()
 	serverConfig.OpenAPIConfig = server.DefaultOpenAPIConfig(config.OpenAPIConfig, openapi.NewDefinitionNamer(config.Scheme))
 	serverConfig.OpenAPIConfig.Info.Title = config.Name
 	serverConfig.OpenAPIConfig.Info.Version = config.Version
@@ -216,6 +218,10 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+func generateDummyKubeconfig() *rest.Config {
+	return &rest.Config{}
 }
 
 func addResponseHeader(handler http.Handler) http.Handler {
