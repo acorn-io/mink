@@ -40,8 +40,8 @@ func WithMigrationTimeout(timeout time.Duration) FactoryOption {
 	}
 }
 
-func WithEncryptionConfiguration(ctx context.Context, configPath string) (FactoryOption, error) {
-	encryptionConf, err := encryptionconfig.LoadEncryptionConfig(ctx, configPath, false)
+func WithEncryptionConfiguration(ctx context.Context, configPath string, apiServerId string) (FactoryOption, error) {
+	encryptionConf, err := encryptionconfig.LoadEncryptionConfig(ctx, configPath, false, apiServerId)
 	if err != nil {
 		return nil, err
 	}
