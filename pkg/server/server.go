@@ -3,10 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/rest"
-	"net"
-	"net/http"
-
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -22,41 +18,46 @@ import (
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/options"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 	netutils "k8s.io/utils/net"
+	"net"
+	"net/http"
 )
 
 const MinkHeaderKey = "X-Mink-Server"
 
 type Server struct {
-	config           *Config
+	MinkConfig       *Config
 	Config           *server.RecommendedConfig
 	GenericAPIServer *server.GenericAPIServer
 }
 
 type Config struct {
-	Name                  string
-	Version               string
-	Authenticator         authenticator.Request
-	Authorization         authorizer.Authorizer
-	HTTPListenPort        int
-	HTTPSListenPort       int
-	LongRunningVerbs      []string
-	LongRunningResources  []string
-	OpenAPIConfig         openapicommon.GetOpenAPIDefinitions
-	Scheme                *runtime.Scheme
-	CodecFactory          *serializer.CodecFactory
-	APIGroups             []*server.APIGroupInfo
-	Middleware            []func(http.Handler) http.Handler
-	PostStartFunc         server.PostStartHookFunc
-	SupportAPIAggregation bool
-	DefaultOptions        *options.RecommendedOptions
-	AuditConfig           *options.AuditOptions
-	IgnoreStartFailure    bool
-	ReadinessCheckers     []healthz.HealthChecker
+	Name                         string
+	Version                      string
+	HTTPListenPort               int
+	HTTPSListenPort              int
+	LongRunningVerbs             []string
+	LongRunningResources         []string
+	Scheme                       *runtime.Scheme
+	CodecFactory                 *serializer.CodecFactory
+	DefaultOptions               *options.RecommendedOptions
+	AuditConfig                  *options.AuditOptions
+	SkipInClusterLookup          bool
+	RemoteKubeConfigFileOptional bool
+	IgnoreStartFailure           bool
+	Middleware                   []func(http.Handler) http.Handler
+	Authenticator                authenticator.Request
+	Authorization                authorizer.Authorizer
+	OpenAPIConfig                openapicommon.GetOpenAPIDefinitions
+	APIGroups                    []*server.APIGroupInfo
+	PostStartFunc                server.PostStartHookFunc
+	SupportAPIAggregation        bool
+	ReadinessCheckers            []healthz.HealthChecker
 }
 
-func (c *Config) complete() {
+func (c *Config) Complete() {
 	if c.HTTPListenPort == 0 {
 		c.HTTPListenPort = 8080
 	}
@@ -95,30 +96,21 @@ func DefaultOpts() *options.RecommendedOptions {
 	return opts
 }
 
-func New(config *Config) (*Server, error) {
-	config.complete()
+func Prep(config *Config) (*server.RecommendedConfig, error) {
+	config.Complete()
 
 	opts := config.DefaultOptions
 	opts.SecureServing.BindPort = config.HTTPSListenPort
-	opts.Authentication.SkipInClusterLookup = !config.SupportAPIAggregation
-	opts.Authentication.RemoteKubeConfigFileOptional = !config.SupportAPIAggregation
+	opts.Authentication.SkipInClusterLookup = config.SkipInClusterLookup
+	opts.Authentication.RemoteKubeConfigFileOptional = config.RemoteKubeConfigFileOptional
 
 	if err := opts.SecureServing.MaybeDefaultWithSelfSignedCerts("localhost", nil, []net.IP{netutils.ParseIPSloppy("127.0.0.1")}); err != nil {
 		return nil, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
 	serverConfig := server.NewRecommendedConfig(*config.CodecFactory)
+
 	serverConfig.ClientConfig = generateDummyKubeconfig()
-	serverConfig.OpenAPIConfig = server.DefaultOpenAPIConfig(config.OpenAPIConfig, openapi.NewDefinitionNamer(config.Scheme))
-	serverConfig.OpenAPIConfig.Info.Title = config.Name
-	serverConfig.OpenAPIConfig.Info.Version = config.Version
-	serverConfig.OpenAPIV3Config = server.DefaultOpenAPIV3Config(config.OpenAPIConfig, openapi.NewDefinitionNamer(config.Scheme))
-	serverConfig.OpenAPIV3Config.Info.Title = config.Name
-	serverConfig.OpenAPIV3Config.Info.Version = config.Version
-	serverConfig.LongRunningFunc = filters.BasicLongRunningRequestCheck(
-		sets.NewString(config.LongRunningVerbs...),
-		sets.NewString(config.LongRunningResources...),
-	)
 
 	if errs := opts.Validate(); len(errs) > 0 {
 		return nil, errors.NewAggregate(errs)
@@ -127,6 +119,28 @@ func New(config *Config) (*Server, error) {
 	if err := opts.ApplyTo(serverConfig); err != nil {
 		return nil, err
 	}
+
+	return serverConfig, nil
+}
+
+func New(config *Config) (*Server, error) {
+	serverConfig, err := Prep(config)
+	if err != nil {
+		return nil, err
+	}
+
+	serverConfig.ClientConfig = generateDummyKubeconfig()
+	serverConfig.OpenAPIConfig = server.DefaultOpenAPIConfig(config.OpenAPIConfig, openapi.NewDefinitionNamer(config.Scheme))
+	serverConfig.OpenAPIConfig.Info.Title = config.Name
+	serverConfig.OpenAPIConfig.Info.Version = config.Version
+	serverConfig.OpenAPIV3Config = server.DefaultOpenAPIV3Config(config.OpenAPIConfig, openapi.NewDefinitionNamer(config.Scheme))
+	serverConfig.OpenAPIV3Config.Info.Title = config.Name
+	serverConfig.OpenAPIV3Config.Info.Version = config.Version
+
+	serverConfig.LongRunningFunc = filters.BasicLongRunningRequestCheck(
+		sets.NewString(config.LongRunningVerbs...),
+		sets.NewString(config.LongRunningResources...),
+	)
 
 	if config.Authenticator != nil {
 		serverConfig.Authentication.Authenticator = union.New(config.Authenticator, anonymous.NewAuthenticator())
@@ -147,7 +161,7 @@ func New(config *Config) (*Server, error) {
 
 	serverConfig.AddReadyzChecks(config.ReadinessCheckers...)
 
-	server, err := serverConfig.Complete().New(config.Name, server.NewEmptyDelegate())
+	server, err := serverConfig.Complete().New(config.Name, server.NewEmptyDelegateWithCustomHandler(http.NotFoundHandler()))
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +184,7 @@ func New(config *Config) (*Server, error) {
 	}
 
 	return &Server{
-		config:           config,
+		MinkConfig:       config,
 		Config:           serverConfig,
 		GenericAPIServer: server,
 	}, nil
@@ -181,7 +195,7 @@ func (s *Server) Run(ctx context.Context) error {
 	go func() {
 		err := readyServer.Run(ctx.Done())
 		if err != nil {
-			if s.config.IgnoreStartFailure {
+			if s.MinkConfig.IgnoreStartFailure {
 				logrus.Errorf("Failed to run api server: %v", err)
 			} else {
 				logrus.Fatalf("Failed to run api server: %v", err)
@@ -189,11 +203,11 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}()
 
-	address := fmt.Sprintf("0.0.0.0:%d", s.config.HTTPListenPort)
+	address := fmt.Sprintf("0.0.0.0:%d", s.MinkConfig.HTTPListenPort)
 
 	handler := addResponseHeader(readyServer.Handler)
-	for i := len(s.config.Middleware) - 1; i >= 0; i-- {
-		handler = s.config.Middleware[i](handler)
+	for i := len(s.MinkConfig.Middleware) - 1; i >= 0; i-- {
+		handler = s.MinkConfig.Middleware[i](handler)
 	}
 
 	httpServer := &http.Server{
@@ -204,7 +218,7 @@ func (s *Server) Run(ctx context.Context) error {
 	go func() {
 		logrus.Infof("Listening on %s", address)
 		if err := httpServer.ListenAndServe(); err != nil {
-			if s.config.IgnoreStartFailure {
+			if s.MinkConfig.IgnoreStartFailure {
 				logrus.Errorf("Failed to run http api server: %v", err)
 			} else {
 				logrus.Fatalf("Failed to run http api server: %v", err)
