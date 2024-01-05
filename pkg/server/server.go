@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/rest"
 	"net"
 	"net/http"
 
