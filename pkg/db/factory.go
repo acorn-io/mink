@@ -13,6 +13,7 @@ import (
 	"github.com/acorn-io/mink/pkg/types"
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -81,8 +82,13 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 		}
 	}
 
-	dsn = strings.TrimPrefix(dsn, "mysql://")
-	gdb := mysql.Open(dsn)
+	var gdb gorm.Dialector
+	if strings.HasPrefix(dsn, "sqlite://") {
+		gdb = sqlite.Open(strings.TrimPrefix(dsn, "sqlite://"))
+	} else {
+		dsn = strings.TrimPrefix(dsn, "mysql://")
+		gdb = mysql.Open(dsn)
+	}
 	db, err := gorm.Open(gdb, &gorm.Config{
 		SkipDefaultTransaction: true,
 		Logger: glogrus.New(glogrus.Config{

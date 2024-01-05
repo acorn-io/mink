@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/acorn-io/broadcaster"
 	"github.com/acorn-io/mink/pkg/channel"
 	"github.com/acorn-io/mink/pkg/datatypes"
 	"github.com/sirupsen/logrus"
@@ -37,7 +38,7 @@ type GormDB struct {
 	tableName    string
 	gvk          schema.GroupVersionKind
 	trigger      chan struct{}
-	broadcaster  *channel.Broadcaster[Record]
+	broadcaster  *broadcaster.Broadcaster[Record]
 	transformers map[schema.GroupKind]value.Transformer
 
 	compactionLock sync.RWMutex
@@ -52,7 +53,7 @@ func NewDB(tableName string, gvk schema.GroupVersionKind, db *gorm.DB, transform
 		db:           db,
 		tableName:    tableName,
 		trigger:      make(chan struct{}, 1),
-		broadcaster:  channel.NewBroadcaster(make(chan Record)),
+		broadcaster:  broadcaster.New[Record](),
 		transformers: transformers,
 	}
 }

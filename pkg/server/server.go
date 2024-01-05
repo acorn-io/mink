@@ -22,6 +22,7 @@ import (
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/options"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 	netutils "k8s.io/utils/net"
 )
@@ -139,7 +140,7 @@ func New(config *Config) (*Server, error) {
 		serverConfig.AddPostStartHookOrDie(config.Name, func(context server.PostStartHookContext) error {
 			err := config.PostStartFunc(context)
 			if err != nil {
-				logrus.Fatal("failed to run post startup hook", err)
+				logrus.Fatalf("failed to run post startup hook: %v", err)
 			}
 			return err
 		})

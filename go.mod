@@ -1,8 +1,9 @@
 module github.com/acorn-io/mink
 
-go 1.21.3
+go 1.21.5
 
 require (
+	github.com/acorn-io/broadcaster v0.0.0-20240105011354-bfadd4a7b45d
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.4
