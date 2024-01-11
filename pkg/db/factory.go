@@ -82,11 +82,15 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 		}
 	}
 
-	var gdb gorm.Dialector
+	var (
+		gdb  gorm.Dialector
+		pool bool
+	)
 	if strings.HasPrefix(dsn, "sqlite://") {
 		gdb = sqlite.Open(strings.TrimPrefix(dsn, "sqlite://"))
 	} else {
 		dsn = strings.TrimPrefix(dsn, "mysql://")
+		pool = true
 		gdb = mysql.Open(dsn)
 	}
 	db, err := gorm.Open(gdb, &gorm.Config{
@@ -106,8 +110,13 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 		return nil, err
 	}
 	sqlDB.SetConnMaxLifetime(time.Minute * 3)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetMaxOpenConns(5)
+	if pool {
+		sqlDB.SetMaxIdleConns(5)
+		sqlDB.SetMaxOpenConns(5)
+	} else {
+		sqlDB.SetMaxIdleConns(1)
+		sqlDB.SetMaxOpenConns(1)
+	}
 	f.db = db
 	f.sqlDB = sqlDB
 	return f, nil
@@ -160,6 +169,20 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 			if err := f.db.WithContext(ctx).Table(tableName).AutoMigrate(&Record{}); err != nil {
 				return nil, err
 			}
+
+			// Migrate from old index names.
+			migrator := f.db.WithContext(ctx).Table(tableName).Migrator()
+			for _, idx := range []string{
+				"idx_ns_name_id",
+				"idx_previous",
+				"idx_garbage",
+				"idx_latest",
+				"idx_ns_name_id"} {
+				if migrator.HasIndex(&Record{}, idx) {
+					_ = migrator.DropIndex(&Record{}, idx)
+				}
+			}
+
 		}
 	}
 	s, err := NewStrategy(f.schema, obj, tableName, f.db, f.transformers, f.partitionIDRequired)

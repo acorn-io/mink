@@ -14,22 +14,22 @@ type Record struct {
 	Kind        string
 	Version     string
 	APIGroup    string
-	Name        string `gorm:"index:idx_ns_name_id"`
-	Namespace   string `gorm:"index:idx_ns_name_id"`
+	Name        string `gorm:"index:,composite:idx_ns_name_id"`
+	Namespace   string `gorm:"index:,composite:idx_ns_name_id"`
 	UID         string
 	Generation  int
-	Previous    *uint `gorm:"index:idx_previous,unique"`
+	Previous    *uint `gorm:"index:,unique"`
 	Create      bool
 	Created     time.Time
 	Updated     time.Time
 	Deleted     *time.Time
 	Removed     *time.Time
-	Garbage     bool `gorm:"index:idx_garbage;not null;default:0"`
-	Latest      bool `gorm:"index:idx_latest;default:0"`
+	Garbage     bool `gorm:"index:,composite:idx_garbage;not null;default:0"`
+	Latest      bool `gorm:"index:,composite:idx_latest;default:0"`
 	Metadata    datatypes.JSON
 	Data        datatypes.JSON
 	Status      datatypes.JSON
-	PartitionID string `gorm:"index:idx_ns_name_id"`
+	PartitionID string `gorm:"index:,composite:idx_ns_name_id"`
 }
 
 type WatchCriteria struct {
