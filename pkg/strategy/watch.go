@@ -100,10 +100,10 @@ func (w *WatchAdapter) predicate(label labels.Selector, field fields.Selector) s
 		Label: label,
 		Field: field,
 	}
-	if w.NamespaceScoped() {
-		result.GetAttrs = storage.DefaultNamespaceScopedAttr
+	if attr, ok := w.strategy.(GetAttr); ok {
+		result.GetAttrs = attr.GetAttr
 	} else {
-		result.GetAttrs = storage.DefaultClusterScopedAttr
+		result.GetAttrs = defaultGetAttr(w)
 	}
 	return result
 }

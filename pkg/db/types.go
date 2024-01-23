@@ -37,6 +37,7 @@ type WatchCriteria struct {
 	Namespace     *string
 	After         uint
 	LabelSelector labels.Selector
+	FieldSelector fields.Selector
 	PartitionID   string
 }
 
