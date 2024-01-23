@@ -375,6 +375,7 @@ func (g *GormDB) initializeWatch(ctx context.Context, criteria WatchCriteria, re
 			Namespace:             criteria.Namespace,
 			After:                 after,
 			LabelSelector:         criteria.LabelSelector,
+			FieldSelector:         criteria.FieldSelector,
 			Limit:                 1000,
 			Before:                before,
 			ignoreCompactionCheck: true,

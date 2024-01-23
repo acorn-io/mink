@@ -67,37 +67,6 @@ func (l *ListAdapter) NamespaceScoped() bool {
 	return true
 }
 
-func (l *ListAdapter) defaultGetAttr() storage.AttrFunc {
-	return func(obj runtime.Object) (labels.Set, fields.Set, error) {
-		labels := labels.Set{}
-		fields := fields.Set{}
-
-		var baseFunc storage.AttrFunc = storage.DefaultNamespaceScopedAttr
-		if !l.NamespaceScoped() {
-			baseFunc = storage.DefaultClusterScopedAttr
-		}
-
-		l, f, err := baseFunc(obj)
-		if err != nil {
-			return nil, nil, err
-		}
-		for k, v := range l {
-			labels[k] = v
-		}
-		for k, v := range f {
-			fields[k] = v
-		}
-
-		if f, ok := obj.(types.Fields); ok {
-			for _, field := range f.FieldNames() {
-				fields[field] = f.Get(field)
-			}
-		}
-
-		return labels, fields, nil
-	}
-}
-
 func (l *ListAdapter) predicate(label labels.Selector, field fields.Selector) storage.SelectionPredicate {
 	result := storage.SelectionPredicate{
 		Label: label,
@@ -106,7 +75,7 @@ func (l *ListAdapter) predicate(label labels.Selector, field fields.Selector) st
 	if attr, ok := l.strategy.(GetAttr); ok {
 		result.GetAttrs = attr.GetAttr
 	} else {
-		result.GetAttrs = l.defaultGetAttr()
+		result.GetAttrs = defaultGetAttr(l)
 	}
 	return result
 }

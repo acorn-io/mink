@@ -138,6 +138,7 @@ func (s *Strategy) Watch(ctx context.Context, namespace string, opts storage.Lis
 	criteria := WatchCriteria{
 		Namespace:     nilOnEmpty(namespace),
 		LabelSelector: opts.Predicate.Label,
+		FieldSelector: opts.Predicate.Field,
 		PartitionID:   partitionID,
 	}
 	name, ok := opts.Predicate.MatchesSingle()
