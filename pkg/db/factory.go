@@ -23,8 +23,8 @@ import (
 )
 
 type Factory struct {
-	db                  *gorm.DB
-	sqlDB               *sql.DB
+	DB                  *gorm.DB
+	SQLDB               *sql.DB
 	schema              *runtime.Scheme
 	migrationTimeout    time.Duration
 	AutoMigrate         bool
@@ -117,8 +117,8 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 		sqlDB.SetMaxIdleConns(1)
 		sqlDB.SetMaxOpenConns(1)
 	}
-	f.db = db
-	f.sqlDB = sqlDB
+	f.DB = db
+	f.SQLDB = sqlDB
 	return f, nil
 }
 
@@ -131,7 +131,7 @@ func (f *Factory) Name() string {
 }
 
 func (f *Factory) Check(req *http.Request) error {
-	err := f.sqlDB.PingContext(req.Context())
+	err := f.SQLDB.PingContext(req.Context())
 	if err != nil {
 		logrus.Warnf("Failed to ping database: %v", err)
 	}
@@ -152,7 +152,7 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 	var (
 		tableName string
 	)
-	if f.db != nil {
+	if f.DB != nil {
 		tableName = strings.ToLower(gvk.Kind)
 		if tn, ok := obj.(TableNamer); ok {
 			tableName = tn.TableName()
@@ -166,12 +166,12 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 				defer cancel()
 			}
 
-			if err := f.db.WithContext(ctx).Table(tableName).AutoMigrate(&Record{}); err != nil {
+			if err := f.DB.WithContext(ctx).Table(tableName).AutoMigrate(&Record{}); err != nil {
 				return nil, err
 			}
 
 			// Migrate from old index names.
-			migrator := f.db.WithContext(ctx).Table(tableName).Migrator()
+			migrator := f.DB.WithContext(ctx).Table(tableName).Migrator()
 			for _, idx := range []string{
 				"idx_ns_name_id",
 				"idx_previous",
@@ -185,7 +185,7 @@ func (f *Factory) NewDBStrategy(obj types.Object) (strategy.CompleteStrategy, er
 
 		}
 	}
-	s, err := NewStrategy(f.schema, obj, tableName, f.db, f.transformers, f.partitionIDRequired)
+	s, err := NewStrategy(f.schema, obj, tableName, f.DB, f.transformers, f.partitionIDRequired)
 	if err != nil {
 		return nil, err
 	}
