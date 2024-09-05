@@ -131,7 +131,7 @@ func (a *CreateAdapter) Validate(ctx context.Context, obj runtime.Object) (resul
 	} else if o, ok := a.strategy.(NameValidator); ok {
 		result = append(result, o.ValidateName(ctx, obj)...)
 	} else {
-		result = append(result, validator.ValidDNSLabel.ValidateName(ctx, obj)...)
+		result = append(result, validator.ValidDNSSubdomain.ValidateName(ctx, obj)...)
 	}
 	if err := checkNamespace(a.NamespaceScoped(), obj); err != nil {
 		result = append(result, err)
