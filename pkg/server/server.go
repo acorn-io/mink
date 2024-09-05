@@ -32,6 +32,8 @@ type Server struct {
 	config           *Config
 	Config           *server.RecommendedConfig
 	GenericAPIServer *server.GenericAPIServer
+	Loopback         *rest.Config
+	started          chan struct{}
 }
 
 type Config struct {
@@ -40,6 +42,7 @@ type Config struct {
 	Authenticator         authenticator.Request
 	Authorization         authorizer.Authorizer
 	HTTPListenPort        int
+	Listener              net.Listener
 	HTTPSListenPort       int
 	LongRunningVerbs      []string
 	LongRunningResources  []string
@@ -99,6 +102,7 @@ func New(config *Config) (*Server, error) {
 	config.complete()
 
 	opts := config.DefaultOptions
+	opts.SecureServing.Listener = config.Listener
 	opts.SecureServing.BindPort = config.HTTPSListenPort
 	opts.Authentication.SkipInClusterLookup = !config.SupportAPIAggregation
 	opts.Authentication.RemoteKubeConfigFileOptional = !config.SupportAPIAggregation
@@ -145,12 +149,30 @@ func New(config *Config) (*Server, error) {
 		})
 	}
 
+	var result = Server{
+		config:  config,
+		Config:  serverConfig,
+		started: make(chan struct{}),
+	}
+
+	err := serverConfig.AddPostStartHook("save loopback", func(context server.PostStartHookContext) error {
+		result.Loopback = context.LoopbackClientConfig
+		close(result.started)
+		return nil
+
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	serverConfig.AddReadyzChecks(config.ReadinessCheckers...)
 
 	server, err := serverConfig.Complete().New(config.Name, server.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
 	}
+
+	result.GenericAPIServer = server
 
 	for _, apiGroup := range config.APIGroups {
 		legacy := false
@@ -169,15 +191,12 @@ func New(config *Config) (*Server, error) {
 		}
 	}
 
-	return &Server{
-		config:           config,
-		Config:           serverConfig,
-		GenericAPIServer: server,
-	}, nil
+	return &result, nil
 }
 
-func (s *Server) Run(ctx context.Context) error {
+func (s *Server) Handler(ctx context.Context) http.Handler {
 	readyServer := s.GenericAPIServer.PrepareRun()
+
 	go func() {
 		err := readyServer.Run(ctx.Done())
 		if err != nil {
@@ -189,12 +208,19 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}()
 
-	address := fmt.Sprintf("0.0.0.0:%d", s.config.HTTPListenPort)
+	<-s.started
 
 	handler := addResponseHeader(readyServer.Handler)
 	for i := len(s.config.Middleware) - 1; i >= 0; i-- {
 		handler = s.config.Middleware[i](handler)
 	}
+
+	return handler
+}
+
+func (s *Server) Run(ctx context.Context) error {
+	address := fmt.Sprintf("0.0.0.0:%d", s.config.HTTPListenPort)
+	handler := s.Handler(ctx)
 
 	httpServer := &http.Server{
 		Handler: handler,
