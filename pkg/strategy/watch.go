@@ -14,7 +14,6 @@ import (
 )
 
 type watchResult struct {
-	ctx    context.Context
 	cancel func()
 	c      <-chan watch.Event
 }
@@ -79,7 +78,6 @@ func (w *WatchAdapter) WatchPredicate(ctx context.Context, p storage.SelectionPr
 	}
 
 	return &watchResult{
-		ctx:    ctx,
 		cancel: cancel,
 		c:      c,
 	}, nil
