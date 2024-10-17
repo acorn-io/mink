@@ -13,6 +13,7 @@ import (
 	"github.com/acorn-io/mink/pkg/types"
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -88,6 +89,9 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 	)
 	if strings.HasPrefix(dsn, "sqlite://") {
 		gdb = sqlite.Open(strings.TrimPrefix(dsn, "sqlite://"))
+	} else if strings.HasPrefix(dsn, "postgres://") {
+		pool = true
+		gdb = postgres.Open(dsn)
 	} else {
 		dsn = strings.TrimPrefix(dsn, "mysql://")
 		pool = true

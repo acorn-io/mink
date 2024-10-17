@@ -1,11 +1,9 @@
 package db
 
 import (
-	"errors"
 	"fmt"
 
-	"github.com/go-sql-driver/mysql"
-	"github.com/mattn/go-sqlite3"
+	"github.com/acorn-io/mink/pkg/db/errtypes"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -50,10 +48,7 @@ func newResourceVersionMismatch(gvk schema.GroupVersionKind, name string) error 
 }
 
 func translateDuplicateEntryErr(err error, gvk schema.GroupVersionKind, objName string) error {
-	if mysqlErr := (*mysql.MySQLError)(nil); errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 { // error 1062 is a duplicate entry error
-		return newConflict(gvk, objName, fmt.Errorf("object has been modified, please apply your changes to the latest version and try again"))
-	}
-	if sqliteErr := new(sqlite3.Error); errors.As(err, sqliteErr) && sqliteErr.Code == 19 { // error 19 is a duplicate entry error
+	if errtypes.IsUniqueConstraintErr(err) {
 		return newConflict(gvk, objName, fmt.Errorf("object has been modified, please apply your changes to the latest version and try again"))
 	}
 	return err

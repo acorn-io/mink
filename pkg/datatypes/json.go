@@ -38,17 +38,28 @@ func (jsonQuery JSONQueryExpression) Build(builder clause.Builder) {
 	if !ok {
 		return
 	}
-	if jsonQuery.exists {
-		builder.WriteString("JSON_EXISTS(")
+	switch stmt.Dialector.Name() {
+	case "mysql", "sqlite":
+		if jsonQuery.exists {
+			builder.WriteString("JSON_EXISTS(")
+		} else {
+			builder.WriteString("JSON_EXTRACT(")
+		}
 		builder.WriteQuoted(jsonQuery.column)
 		builder.WriteByte(',')
 		builder.AddVar(stmt, jsonQueryJoin(jsonQuery.path))
 		builder.WriteString(")")
-	} else {
-		builder.WriteString("JSON_EXTRACT(")
+	case "postgres":
+		if jsonQuery.exists {
+			builder.WriteString("jsonb_exists(")
+		} else {
+			builder.WriteString("jsonb_extract_path_text(")
+		}
 		builder.WriteQuoted(jsonQuery.column)
-		builder.WriteByte(',')
-		builder.AddVar(stmt, jsonQueryJoin(jsonQuery.path))
+		for _, p := range jsonQuery.path {
+			builder.WriteByte(',')
+			builder.AddVar(stmt, p)
+		}
 		builder.WriteString(")")
 	}
 }
