@@ -132,8 +132,12 @@ func New(config *Config) (*Server, error) {
 		return nil, err
 	}
 
+	if err := options.NewServerRunOptions().ApplyTo(&serverConfig.Config); err != nil {
+		return nil, err
+	}
+
 	if config.Authenticator != nil {
-		serverConfig.Authentication.Authenticator = union.New(config.Authenticator, anonymous.NewAuthenticator())
+		serverConfig.Authentication.Authenticator = union.New(config.Authenticator, anonymous.NewAuthenticator(nil))
 	}
 	if config.Authorization != nil {
 		serverConfig.Authorization.Authorizer = config.Authorization
