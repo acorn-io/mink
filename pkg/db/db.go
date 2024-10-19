@@ -352,7 +352,7 @@ func (g *GormDB) fill(ctx context.Context, id uint) {
 func (g *GormDB) since(ctx context.Context, id uint) ([]Record, error) {
 	var records []Record
 	db := g.getDB(ctx).WithContext(ctx)
-	resp := db.Table(g.tableName).Model(records).Where("id > ?", id).Find(&records)
+	resp := db.Table(g.tableName).Model(records).Where("id > ?", id).Find(&records).Order("id ASC")
 
 	for i := range records {
 		if err := g.decryptData(ctx, &records[i]); err != nil {
