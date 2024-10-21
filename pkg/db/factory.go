@@ -84,10 +84,12 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 	}
 
 	var (
-		gdb  gorm.Dialector
-		pool bool
+		gdb                    gorm.Dialector
+		pool                   bool
+		skipDefaultTransaction bool
 	)
 	if strings.HasPrefix(dsn, "sqlite://") {
+		skipDefaultTransaction = true
 		gdb = sqlite.Open(strings.TrimPrefix(dsn, "sqlite://"))
 	} else if strings.HasPrefix(dsn, "postgres://") {
 		pool = true
@@ -98,10 +100,10 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 		gdb = mysql.Open(dsn)
 	}
 	db, err := gorm.Open(gdb, &gorm.Config{
-		SkipDefaultTransaction: true,
+		SkipDefaultTransaction: skipDefaultTransaction,
 		Logger: glogrus.New(glogrus.Config{
 			SlowThreshold:             200 * time.Millisecond,
-			IgnoreRecordNotFoundError: false,
+			IgnoreRecordNotFoundError: true,
 			LogSQL:                    true,
 		}),
 	})
