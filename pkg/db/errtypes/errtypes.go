@@ -3,9 +3,9 @@ package errtypes
 import (
 	"errors"
 
+	sqlite3 "github.com/glebarez/go-sqlite"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
-	sqlite3 "modernc.org/sqlite"
 )
 
 func IsUniqueConstraintErr(err error) bool {
