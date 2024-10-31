@@ -308,7 +308,7 @@ func (s *Strategy) list(ctx context.Context, namespace *string, partitionID stri
 		}
 	}
 
-	if opts.Predicate.Limit != 0 && int64(len(records)) == opts.Predicate.Limit {
+	if opts.Predicate.Limit != 0 && int64(len(objs)) == opts.Predicate.Limit {
 		data, err := json.Marshal(&cont{
 			ID: records[len(records)-2].ID,
 		})

@@ -92,8 +92,9 @@ func NewFactory(schema *runtime.Scheme, dsn string, opts ...FactoryOption) (*Fac
 		skipDefaultTransaction = true
 		gdb = sqlite.Open(strings.TrimPrefix(dsn, "sqlite://"))
 	} else if strings.HasPrefix(dsn, "postgres://") {
-		pool = true
 		gdb = postgres.Open(dsn)
+	} else if strings.HasPrefix(dsn, "postgresql://") {
+		gdb = postgres.Open(strings.Replace(dsn, "postgresql://", "postgres://", 1))
 	} else {
 		dsn = strings.TrimPrefix(dsn, "mysql://")
 		pool = true
